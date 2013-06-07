@@ -32,72 +32,48 @@
  *     Version: 0.1
  *
  */
+#ifndef ARDUINO
+        #include "MQTTS_Defines.h"
+#else
+        #include <MQTTS_Defines.h>
+#endif
 
 
 #ifdef ARDUINO
-  #include <MQTTS_Defines.h>
   #include <ZBeeStack.h>
+
   #ifdef DEBUG_ZBEESTACK
-    #include <SoftwareSerial.h>
+  	#include <SoftwareSerial.h>
 	extern SoftwareSerial debug;
   #endif
-#else
-  #include "MQTTS_Defines.h"
-  #ifndef ZBEE_EMULATION
-    #include <termios.h>
-  #endif
-  #include "ZBeeStack.h"
-  #include <stdio.h>
-  #include <sys/time.h>
-  #include <sys/types.h>
-  #include <sys/stat.h>
-  #include <unistd.h>
-  #include <stdlib.h>
-  #include <string.h>
-  #include <fcntl.h>
-  #include <errno.h>
-#endif
+
+#endif  /* ARDUINO */
+
+#ifdef MBED
+	#include "mbed.h"
+	#include "ZBeeStack.h"
+
+    #ifdef DEBUG_ZBEESTACK
+		    extern Serial debug;
+        #endif
+#endif /* MBED */
+
+#ifdef LINUX
+	#include "ZBeeStack.h"
+	#include <stdio.h>
+	#include <sys/time.h>
+	#include <sys/types.h>
+	#include <sys/stat.h>
+	#include <unistd.h>
+	#include <stdlib.h>
+	#include <string.h>
+	#include <fcntl.h>
+	#include <errno.h>
+        #include <termios.h>
+
+#endif /* LINUX */
+
 using namespace std;
-
-#ifdef ZBEE_EMULATION
-extern EmulateResponse theResp;
-ZBRxResponse* MqttsGetDebugResponse(){
-        return (ZBRxResponse*)&theResp;
-}
-#endif
-
-/*===========================================
-          Class  EmulateResponse
- ============================================*/
-EmulateResponse::EmulateResponse():ZBRxResponse(){
-  setFrameData((uint8_t*)calloc(MAX_FRAME_DATA_SIZE,sizeof(uint8_t)));
-  setOption(0x01);
-  setApiId(ZB_RX_RESPONSE);
-  setErrorCode(NO_ERROR);
-  setAvailable(true);
-}
-
-EmulateResponse::~EmulateResponse(){
-  free(_frameDataPtr);
-}
-
-void EmulateResponse::setRemoteAddress64(uint32_t msb, uint32_t lsb){
-  getRemoteAddress64().setMsb(msb);
-  getRemoteAddress64().setLsb(lsb);
-}
-
-void EmulateResponse::setRemoteAddress16(uint16_t addr){
-  getFrameData()[8] = (addr >> 8) & 0xff;
-  getFrameData()[9] = addr & 0xff;
-}
-void EmulateResponse::setOption(uint8_t opt){
-  getFrameData()[10] = opt;
-}
-
-void EmulateResponse::setData(uint8_t* data, uint8_t len){
-  memcpy(getFrameData() + 11, data, len);
-  setFrameDataLength(len + 11);
-}
 
 /*=========================================
              Class XBeeAddress64
@@ -205,13 +181,6 @@ void XBeeResponse::setErrorCode(uint8_t errorCode){
   _errorCode = errorCode;
 }
 
-void XBeeResponse::getZBTxStatusResponse(XBeeResponse &txResponse){
-  ZBTxStatusResponse *zt = static_cast<ZBTxStatusResponse*>(&txResponse);
-  zt->setFrameData(getFrameData());
-  zt->setFrameId(getFrameData()[0]);
-  copyCommon(txResponse);
-}
-
 void XBeeResponse::getZBRxResponse(XBeeResponse &rxResponse){
   ZBRxResponse *zr = static_cast<ZBRxResponse*>(&rxResponse);
   zr->setFrameData(getFrameData());
@@ -237,12 +206,6 @@ void XBeeResponse::getAtCommandResponse(XBeeResponse &atCommandResponse){
   at->setFrameId(getFrameData()[0]);
   at->setErrorCode(getFrameData()[3]);
   copyCommon(atCommandResponse);
-}
-
-void XBeeResponse::getModemStatusResponse(XBeeResponse &modemStatusResponse){
-  ModemStatusResponse *modem = static_cast<ModemStatusResponse*>(&modemStatusResponse);
-  modem->setFrameData(getFrameData());
-  copyCommon(modemStatusResponse);
 }
 
 void XBeeResponse::reset(){
@@ -309,19 +272,6 @@ bool ZBRxResponse::isBroadcast(){
   return ( getOption() && 0x02);
 }
 
-
-/*=========================================
-             Class ModemStatusResponse
- =========================================*/
-
-ModemStatusResponse::ModemStatusResponse() {
-
-}
-
-uint8_t ModemStatusResponse::getStatus(){
-  return getFrameData()[0];
-}
-
 /*=========================================
              Class FrameIdResponse
  =========================================*/
@@ -368,33 +318,6 @@ uint8_t* AtCommandResponse::getValue(){
 
 bool AtCommandResponse::isOk(){
   return (getStatus() == AT_OK);
-}
-
-/*=========================================
-        Class ZBTxStatusResponse
- =========================================*/
-ZBTxStatusResponse::ZBTxStatusResponse(){
-
-}
-
-uint16_t ZBTxStatusResponse::getRemoteAddress(){
-  return (getFrameData()[1] << 8) + getFrameData()[2];
-}
-
-uint8_t ZBTxStatusResponse::getTxRetryCount(){
-  return getFrameData()[3];
-}
-
-uint8_t ZBTxStatusResponse::getDeliveryStatus(){
-  return getFrameData()[4];
-}
-
-uint8_t ZBTxStatusResponse::getDiscoveryStatus(){
-  return getFrameData()[5];
-}
-
-bool ZBTxStatusResponse::isSuccess(){
-  return getDeliveryStatus() == SUCCESS;
 }
 
 /*=========================================
@@ -622,7 +545,8 @@ XBee::XBee(){
   _response.setFrameData(_responseFrameData);
   _modemStatus = 0;
   _serialPort = 0;
-  _tm = XTimer();
+  //_tm = XTimer();
+  _tm.stop();
 }
 
 void XBee::getResponse(XBeeResponse &response){
@@ -702,9 +626,6 @@ void XBee::readApiFrame(){
               _checksumTotal = 0;
               return;
           }else{
-              /*
-              _response.getFrameData()[_pos - 4] = _b[0];
-               */
               uint8_t* buf = _response.getFrameData();
               buf[_pos - 4] = _b[0];
               _pos++;
@@ -715,43 +636,38 @@ void XBee::readApiFrame(){
 }
 
 bool XBee::readApiFrame(long timeoutMillsec){
-  if(timeoutMillsec < 0){
-      return false;
-  }
   _tm.start(timeoutMillsec);
-
   while(!_tm.isTimeUp()){
       readApiFrame();
+
       if(getResponse().isAvailable()){
-              #ifdef DEBUG_ZBEESTACK
-                  #ifdef ARDUINO
-                      debug.println();
-                      debug.println("Packet is available");
-                  #else
-                      fprintf(stdout,"\nPacket is available\n");
-                  #endif
-              #endif
+            #ifdef DEBUG_ZBEESTACK
+                #ifdef ARDUINO
+                    debug.println("");
+                #endif
+                    #ifdef MBED
+                    debug.fprintf(stdout,"\n" );
+                    #endif
+                    #ifdef LINUX
+                    fprintf(stdout,"\n" );
+                #endif
+            #endif
           return true;
       }else if(getResponse().isError()){
-
-              #ifdef DEBUG_ZBEESTACK
-                  #ifdef ARDUINO
-                      debug.println();
-                      debug.println("Packet is error");
-                  #else
-                      fprintf(stdout,  "\nPacket is error");
-                  #endif
-              #endif
+            #ifdef DEBUG_ZBEESTACK
+                #ifdef ARDUINO
+                    debug.println("");
+                #endif
+                    #ifdef MBED
+                    debug.fprintf(stdout,"\n" );
+                    #endif
+                    #ifdef LINUX
+                    fprintf(stdout,"\n" );
+                #endif
+            #endif
           return false;
       }
   }
-              #ifdef DEBUG_ZBEESTACK
-                  #ifdef ARDUINO
-                      debug.println("Timeout");
-                  #else
-                      fprintf(stdout, "Timeout\n");
-                  #endif
-              #endif
   return false;   //Timeout
 }
 
@@ -799,7 +715,11 @@ void XBee::send(XBeeRequest &request){
 #ifdef DEBUG_ZBEESTACK
     #ifdef ARDUINO
         debug.println("");
-    #else
+    #endif
+	#ifdef MBED
+        debug.fprintf(stdout,"\n" );
+	#endif
+	#ifdef LINUX
         fprintf(stdout,"\n" );
     #endif
 #endif
@@ -825,16 +745,11 @@ void XBee::flush(){
 }
 
 bool XBee::write(uint8_t val){
-  if (_serialPort->send(val) ){
-      return true;
-  }else{
-      return false;
-  }
+  return (_serialPort->send(val) ? true : false );
 }
 
 bool XBee::read(uint8_t *buff){
-bool ret = _serialPort->recv(buff);
-        return ret;
+        return  _serialPort->recv(buff);
 }
 
 /*=========================================
@@ -928,12 +843,11 @@ void XTimer::stop(){
     _millis = 0;
 }
 
-#endif
+#endif  /* ARDUINO */
 
 /*=========================================
        Class SerialPort
  =========================================*/
-
 #ifdef ARDUINO
 /**
  *  For Arduino
@@ -976,15 +890,67 @@ void SerialPort::flush(void){
   _serial->flush();
 }
 
-#else
-#ifndef ZBEE_EMULATION
+#endif /* ARDUINO */
+
+#ifdef MBED
+/**
+ *  For MBED
+ */
+SerialPort::SerialPort(){
+  _serial = new Serial(ZB_MBED_SERIAL_TXPIN, ZB_MBED_RXPIN);
+}
+
+void SerialPort::begin(long baudrate){
+  _serial->baud(baudrate);
+  _serial->format(8,Serial::None,1);
+}
+
+bool SerialPort::send(unsigned char b){
+  _serial->putc(b);
+#ifdef DEBUG_ZBEESTACK
+	debug.fprintf(stdout, " S:0x%x", b);
+#endif
+      return true;
+  }
+}
+
+bool SerialPort::recv(unsigned char* buf){
+  if ( _serial->readable() > 0 ){
+    buf[0] = _serial->getc();
+#ifdef DEBUG_ZBEESTACK
+        debug.fprintf(stdout, " R:0x%x",buf[0] );
+#endif
+    return true;
+  }else{
+    return false;
+  }
+}
+
+void SerialPort::flush(void){
+  _serial->flush();
+}
+
+#endif /* MBED */
+
+#ifdef LINUX
+
 SerialPort::SerialPort(){
     _tio.c_iflag = IGNBRK | IGNPAR;
+#ifdef XBEE_FLOWCTRL_CRTSCTS
     _tio.c_cflag = CS8 | CLOCAL | CREAD | CRTSCTS;
+#else
+    _tio.c_cflag = CS8 | CLOCAL | CREAD;
+#endif
     _tio.c_cc[VINTR] = 0;
     _tio.c_cc[VTIME] = 0;
     _tio.c_cc[VMIN] = 0;
     _fd = 0;
+}
+
+SerialPort::~SerialPort(){
+  if (_fd){
+      close(_fd);
+  }
 }
 
 int SerialPort::begin(const char* devName){
@@ -1000,11 +966,7 @@ int SerialPort::begin(const char* devName, unsigned int boaurate, bool parity){
   return begin(devName, boaurate, parity, 1);
 }
 
-int SerialPort::begin(const char* devName,
-                unsigned int boaurate,
-                bool parity,
-                unsigned int stopbit){
-
+int SerialPort::begin(const char* devName, unsigned int boaurate,  bool parity, unsigned int stopbit){
   _fd = open(devName, O_RDWR | O_NOCTTY);
   if(_fd < 0){
       return _fd;
@@ -1037,12 +999,7 @@ bool SerialPort::send(unsigned char b){
       return false;
   }else{
       #ifdef DEBUG_ZBEESTACK
-          #ifdef ARDUINO
-            debug.print(" S:0x");
-            debug.println(b,HEX);
-          #else
-            fprintf(stdout, " S:0x%x", b);
-          #endif
+          fprintf(stdout, " S:0x%x", b);
       #endif
       return true;
   }
@@ -1053,12 +1010,7 @@ bool SerialPort::recv(unsigned char* buf){
       return false;
   }else{
       #ifdef DEBUG_ZBEESTACK
-          #ifdef ARDUINO
-            debug.print(" R:0x");
-            debug.println(buf[0], HEX);
-          #else
-            fprintf(stdout, " R:0x%x",buf[0] );
-          #endif
+          fprintf(stdout, " R:0x%x",buf[0] );
       #endif
       return true;
   }
@@ -1067,53 +1019,25 @@ bool SerialPort::recv(unsigned char* buf){
 void SerialPort::flush(void){
   tcsetattr(_fd, TCSAFLUSH, &_tio);
 }
-#else
-/*----------------------
- *  for Emulation
- -----------------------*/
-SerialPort::SerialPort( ){
+#endif  /* LINUX */
 
-}
-
-void SerialPort::begin(){
-
-}
-
-bool SerialPort::send(unsigned char b){
-#ifdef DEBUG_ZBEESTACK
-    #ifdef ARDUINO
-      debug.print(" R:0x");
-      debug.println(buf[0], HEX);
-    #else
-      fprintf(stdout," 0x%x", b);
-            return true;
-    #endif
-#endif
-}
-bool SerialPort::recv(unsigned char* b){
-	return true;
-}
-
-void SerialPort::flush(){
-
-}
-
-#endif  /* ZBEE_EMULATION */
-#endif  /* ARDUINO */
 
 /*===========================================
               Class  ZBeeStack
  ============================================*/
 
-ZBeeStack::ZBeeStack(uint16_t readTimeout, uint8_t timeoutRetryCnt){
+ZBeeStack::ZBeeStack(){
  _respWaitStat = ZB_WAIT_NORESP;
  _sendReqStat = ZB_SEND_REQ_NO;
  _rxDataReady = false;
- _readTimeout = readTimeout;
- _timeoutRetryCnt = timeoutRetryCnt;
+ _readTimeout = PACKET_TIMEOUT;
  _rxCallbackPtr = NULL;
  _rxData = NULL;
  _returnCode = 0;
+}
+
+void ZBeeStack::setReceivePacketTimeout(long timeout){
+  _readTimeout = timeout;
 }
 
 bool ZBeeStack::setNodeId(const char* id){
@@ -1131,8 +1055,16 @@ bool ZBeeStack::setNodeId(const char* id){
   }
 }
 
+ZBNode ZBeeStack::getZBNode(){
+    return _zbNode;
+}
+
+const char* ZBeeStack::getNodeId(){
+  return getZBNode().getNodeId();
+}
+
 int ZBeeStack::sendAt(const char* cmd){
-  return sendAt(cmd, NULL, 0); // PACKET_ERROR_TIMEOUT, PACKET_ERROR_RESPONSE
+  return sendAt(cmd, NULL, 0); // PACKET_ERROR_TIMEOUT, PACKET_ERROR_RESPONSE, PACKET_CORRECT
 }
 
 int ZBeeStack::sendAt(const char* cmd, uint8_t* cmdValue, uint8_t valLength){
@@ -1145,32 +1077,39 @@ int ZBeeStack::sendAt(const char* cmd, uint8_t* cmdValue, uint8_t valLength){
   _atRequest.setFrameId(_xbee.getNextFrameId());
   _sendReqStat = ZB_SEND_REQ_AT;
   _respWaitStat = ZB_WAIT_NORESP;
-  return packetHandle(PACKET_TIMEOUT_MIN); // PACKET_ERROR_TIMEOUT, PACKET_ERROR_RESPONSE
+  return packetHandle(); // PACKET_ERROR_TIMEOUT, PACKET_ERROR_RESPONSE, PACKET_CORRECT
 }
 
 
 int ZBeeStack::sendData(XBeeAddress64* addr64, uint16_t addr16, uint8_t* payload,
-                           uint8_t payloadLen, uint8_t option, uint16_t packetReadTimeout ){
+                           uint8_t payloadLen, uint8_t option ){
   _txRequest.setAddress64(addr64);
   _txRequest.setAddress16(addr16);
   _txRequest.setOption(option);
   _txRequest.setPayload(payload);
   _txRequest.setPayloadLength(payloadLen);
-  _txRequest.setFrameId(_xbee.getNextFrameId());
+  _txRequest.setFrameId(0);                // Stop to Replay
   _sendReqStat = ZB_SEND_REQ_TX;
   _respWaitStat = ZB_WAIT_NORESP;
-  return packetHandle(packetReadTimeout);  // PACKET_ERROR_TIMEOUT, PACKET_ERROR_RESPONSE, MQTTS_ERR_XXXXXX
+  return packetHandle();
 }
 
-int ZBeeStack::bcastData(uint8_t* xmitData, uint8_t dataLen, uint16_t packetReadTimeout){
+int ZBeeStack::bcastData(uint8_t* xmitData, uint8_t dataLen){
   XBeeAddress64 addr;
-  return sendData(&addr, ZB_BROADCAST_ADDRESS, xmitData, dataLen, 0, packetReadTimeout);
+  addr.setLsb(BROADCAST_ADDRESS);
+  return sendData(&addr, ZB_BROADCAST_ADDRESS, xmitData, dataLen, 0);
 }
 
-int ZBeeStack::readPacket(uint16_t packetReadTimeout){
+int ZBeeStack::readPacket(){
   _sendReqStat = ZB_SEND_REQ_NO;
   _respWaitStat = ZB_WAIT_NORESP;
-  return packetHandle(packetReadTimeout);  // PACKET_ERROR_TIMEOUT, PACKET_ERROR_RESPONSE, MQTTS_ERR_
+  return packetHandle();
+}
+
+int ZBeeStack::readResp(){
+  _sendReqStat = ZB_SEND_REQ_NO;
+  _respWaitStat = ZB_WAIT_RX_RESP;
+  return packetHandle();
 }
 
 
@@ -1194,10 +1133,6 @@ AtCommandResponse*  ZBeeStack::getAtResponse(){
   return &_atResp;
 }
 
-ZBTxStatusResponse* ZBeeStack::getTxResponse(){
-  return &_txStatResp;
-}
-
 ZBRxResponse* ZBeeStack::getRxResponse(){
   return &_rxResp;
 }
@@ -1206,204 +1141,133 @@ ZBRxResponse* ZBeeStack::getRxData(){
   return _rxData;
 }
 
-#ifndef ZBEE_EMULATION
 /*----------------------------------------
- *          for XBee
+ *          via XBee
  -----------------------------------------*/
-int ZBeeStack::packetHandle(uint16_t packetReadTimeout){
-    uint16_t readTimeout;
-    uint8_t timeoutRetryCnt;
-    uint8_t timeoutCnt;
-packetRead:
-    if (_respWaitStat == ZB_WAIT_NORESP){
-          readTimeout = PACKET_TIMEOUT_MIN;
-          timeoutRetryCnt = 1;
-    }else{
-          readTimeout = _readTimeout;
-          timeoutRetryCnt = _timeoutRetryCnt;
-    }
-    timeoutCnt = 0;
-    while(timeoutCnt <  timeoutRetryCnt){
-        timeoutCnt++;
-        if (_xbee.readApiFrame(readTimeout)){
-            goto packetCheck;
-        }
-    }
-    if (_sendReqStat == ZB_SEND_REQ_NO){
-        return PACKET_ERROR_TIMEOUT;
-    }
-
-packetCheck:
-    switch(_xbee.getResponse().getApiId()){
-    case ZB_RX_RESPONSE:
-        if (_respWaitStat == ZB_WAIT_NORESP) {
-            _xbee.getResponse().getZBRxResponse(_rxResp);
-            if (_rxResp.isError()){           // received packet is not collect
-                return PACKET_ERROR_RESPONSE;
-            }else{    //  Copy Data
-                for ( int i = 0; i < _rxResp.getFrameDataLength(); i++){
-                    _rxDataBuf[i] = _rxResp.getFrameData()[i];
-                }
-                _rxResp.setFrameData(_rxDataBuf);
-                _rxDataReady = true;
+int ZBeeStack::packetHandle(){
+    while(true){
+        if (_respWaitStat == ZB_WAIT_NORESP){
+            if (_sendReqStat == ZB_SEND_REQ_NO && !_xbee.readApiFrame(_readTimeout)){
+                return PACKET_ERROR_NODATA;
+            }
+        }else{
+            if (!_xbee.readApiFrame(_readTimeout)){
+                return PACKET_ERROR_NODATA;
             }
         }
-        break;
 
-    case ZB_TX_STATUS_RESPONSE:
-        if (_respWaitStat == ZB_WAIT_TX_RESP) {  // ZBTxRequest
-            _xbee.getResponse().getZBTxStatusResponse(_txStatResp);
-            if (_txStatResp.getFrameId() == _txRequest.getFrameId()){
-                if (_txStatResp.isSuccess()) {
-                    _respWaitStat = ZB_WAIT_NORESP;
-                    return PACKET_CORRECT;
-                }else{
-                    _respWaitStat = ZB_WAIT_NORESP;
+        switch(_xbee.getResponse().getApiId()){
+        case ZB_RX_RESPONSE:
+            if (_respWaitStat == ZB_WAIT_NORESP || _respWaitStat == ZB_WAIT_RX_RESP) {
+                _xbee.getResponse().getZBRxResponse(_rxResp);
+                if (_rxResp.isError()){           // received packet is not collect
                     return PACKET_ERROR_RESPONSE;
+                }else{    //  Copy Data
+                    for ( int i = 0; i < _rxResp.getFrameDataLength(); i++){
+                        _rxDataBuf[i] = _rxResp.getFrameData()[i];
+                    }
+                    _rxResp.setFrameData(_rxDataBuf);
+                    _rxData = &_rxResp;
+                    _rxDataReady = true;
                 }
-            }else{                       // FrameId error
-                goto packetRead;
             }
-        }
-        break;
-    case AT_COMMAND_RESPONSE:
-        if (_respWaitStat == ZB_WAIT_AT_RESP ) {
-           _xbee.getResponse().getAtCommandResponse(_atResp);
-           if ((_atResp.getFrameId() == _atRequest.getFrameId())
-                && _atResp.getCommand()[0] == _atRequest.getCommand()[0]
-                && _atResp.getCommand()[1] == _atRequest.getCommand()[1] ){
-               if (_atResp.isOk()){
-                   _respWaitStat = ZB_WAIT_NORESP;
-                   return PACKET_CORRECT;
-               }else{
-                   _respWaitStat = ZB_WAIT_NORESP;
-                   return PACKET_ERROR_RESPONSE;
-               }
-            }else{                       // FrameId or Command error
-                goto packetRead;
-            }
-          }
-        break;
+            break;
 
-    case MODEM_STATUS_RESPONSE:
-        _xbee.getResponse().getModemStatusResponse(_mStatResp);
-        _xbee.setModemStatus(_mStatResp.getStatus());
-        break;
-
-    default:
-        break;
-
-    }
-
-    /* ============= Send Request  ============== */
-    if (_respWaitStat == ZB_WAIT_NORESP) {
-        switch (_sendReqStat) {
-        case ZB_SEND_REQ_NO:               // No send Msg
-            if ( _rxDataReady && (_rxCallbackPtr != NULL)){
-                _rxCallbackPtr(getRxData(), &_returnCode);
-                _rxDataReady = false;
+        case AT_COMMAND_RESPONSE:
+            if (_respWaitStat == ZB_WAIT_AT_RESP ) {
+               _xbee.getResponse().getAtCommandResponse(_atResp);
+               if ((_atResp.getFrameId() == _atRequest.getFrameId())
+                    && _atResp.getCommand()[0] == _atRequest.getCommand()[0]
+                    && _atResp.getCommand()[1] == _atRequest.getCommand()[1] ){
+                   if (_atResp.isOk()){
+                       _respWaitStat = ZB_WAIT_NORESP;
+                       return PACKET_CORRECT;
+                   }else{
+                       _respWaitStat = ZB_WAIT_NORESP;
+                       return PACKET_ERROR_RESPONSE;
+                   }
+                }   // FrameId or Command error
              }
-            return _returnCode;
-            break;
-
-        case ZB_SEND_REQ_AT:               // AT Command
-            _respWaitStat = ZB_WAIT_AT_RESP;
-            _sendReqStat = ZB_SEND_REQ_NO;
-            _xbee.send(_atRequest);
-            break;
-
-        case ZB_SEND_REQ_TX:
-            _respWaitStat = ZB_WAIT_TX_RESP;
-            _sendReqStat = ZB_SEND_REQ_NO;
-            _xbee.send(_txRequest);
-            break;
+             break;
 
         default:
-            return PACKET_ERROR_NOTHING;
             break;
         }
-    }
-    if (_rxDataReady && (_rxCallbackPtr != NULL)){
-        _rxCallbackPtr(getRxData(), &_returnCode);
-        _rxDataReady = false;
-    }
-    goto packetRead;
-}
-#else
-/*---------------------------
- *       for Emulation
- ----------------------------*/
-int ZBeeStack::packetHandle(uint16_t packetReadTimeout){
-      if (_respWaitStat == ZB_WAIT_NORESP) {
-          _rxDataReady = true;
-          _rxData = MqttsGetDebugResponse();
-      }else if (!_sendReqStat){
-          return 0;
-      }
 
-    /* ============= Send Request  ============== */
-    if (_respWaitStat == ZB_WAIT_NORESP) {
-        switch (_sendReqStat) {
-        case ZB_SEND_REQ_NO:               // No send Msg
-            if ( _rxDataReady && (_rxCallbackPtr != NULL)){
-                _rxCallbackPtr(MqttsGetDebugResponse(), &_returnCode);
-                _rxDataReady = false;
-             }
-            return _returnCode;
-            break;
+        /* ============= Send Request  ============== */
+        if (_respWaitStat == ZB_WAIT_NORESP) {
+            switch (_sendReqStat) {
+            case ZB_SEND_REQ_NO:
+                if ( _rxDataReady && (_rxCallbackPtr != NULL)){
+                    _rxCallbackPtr(getRxData(), &_returnCode);
+                    _rxDataReady = false;
+                    return _returnCode;
+                }
+                return PACKET_ERROR_NODATA;
+                break;
 
-        case ZB_SEND_REQ_TX:
-            //_respWaitStat = ZB_WAIT_TX_RESP;
-            _sendReqStat = ZB_SEND_REQ_NO;
-            _xbee.send(_txRequest);
-            if (_rxDataReady && (_rxCallbackPtr != NULL)){
-                _rxCallbackPtr(MqttsGetDebugResponse(), &_returnCode);
-                _rxDataReady = false;
-                return _returnCode;
+            case ZB_SEND_REQ_TX:
+                _xbee.send(_txRequest);
+                return PACKET_CORRECT;
+                break;
+
+            case ZB_SEND_REQ_AT:
+                _respWaitStat = ZB_WAIT_AT_RESP;
+                _sendReqStat = ZB_SEND_REQ_NO;
+                _xbee.send(_atRequest);
+                break;
+
+            default:
+                return PACKET_ERROR_UNKOWN;
+                break;
             }
-            break;
-
-        default:
-            return PACKET_ERROR_NOTHING;
-            break;
         }
+
+        if (_rxDataReady && (_rxCallbackPtr != NULL)){
+            _rxCallbackPtr(getRxData(), &_returnCode);
+            _rxDataReady = false;
+        }
+
     }
-    return 0;
+    return -1;  // for compiler
 }
 
-#endif
 
+bool ZBeeStack::init(ZBNodeType type, const char* nodeId){
+  uint16_t a16 = 0;
+  uint32_t msb = 0;
+  uint32_t lsb = 0;
 
-bool ZBeeStack::init(ZBNodeType type){
-  if (sendAt("ND") == PACKET_CORRECT){
+  if (sendAt("MY") == PACKET_CORRECT){
       uint8_t* value = getAtResponse()->getValue();
-      uint16_t a16 = 0;
       a16 = (a16 + (uint32_t)value[0]) << 8;
       a16 = (a16 + (uint32_t)value[1]);
       _zbNode.setAddress16(a16);
+  }
 
-      uint32_t msb = 0;
+  if (sendAt("SH") == PACKET_CORRECT){
+      uint8_t* value = getAtResponse()->getValue();
+
+      msb = (msb + (uint32_t)value[0]) << 8;
+      msb = (msb + (uint32_t)value[1]) << 8;
       msb = (msb + (uint32_t)value[2]) << 8;
-      msb = (msb + (uint32_t)value[3]) << 8;
-      msb = (msb + (uint32_t)value[4]) << 8;
-      msb = (msb + (uint32_t)value[5]);
-
-      uint32_t lsb = 0;
-      lsb = (lsb + (uint32_t)value[6]) << 8;
-      lsb = (lsb + (uint32_t)value[7]) << 8;
-      lsb = (lsb + (uint32_t)value[8]) << 8;
-      lsb = (lsb + (uint32_t)value[9]);
+      msb = (msb + (uint32_t)value[3]);
+  }
+  if (sendAt("SL") == PACKET_CORRECT){
+      uint8_t* value = getAtResponse()->getValue();
+      lsb = (lsb + (uint32_t)value[0]) << 8;
+      lsb = (lsb + (uint32_t)value[1]) << 8;
+      lsb = (lsb + (uint32_t)value[2]) << 8;
+      lsb = (lsb + (uint32_t)value[3]);
       _zbNode.setMsb(msb);
       _zbNode.setLsb(lsb);
-
-      _zbNode.setNodeId((char*)(value + 10));
-
-      _zbNode.setDeviceType(type);
-      _zbNode.setNodeStatus(MQTTS_DEVISE_DISCONNECTED);
-    return true;
-  }else{
-      return false;
   }
+  _zbNode.setNodeId(nodeId);
+  setNodeId(nodeId);
+
+  _zbNode.setDeviceType(type);
+  _zbNode.setNodeStatus(MQTTS_DEVICE_DISCONNECTED);
+  return true;
 }
 
 
@@ -1450,7 +1314,7 @@ void ZBNode::setNodeStatus(uint8_t stat){
   _nodeStatus = stat;
 }
 
-void ZBNode::setNodeId(char* id){
+void ZBNode::setNodeId(const char* id){
   if (id != 0 ){
       strcpy(_nodeId, id);
   }
