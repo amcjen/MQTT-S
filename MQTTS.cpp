@@ -886,7 +886,7 @@ uint8_t  MqttsSubAck::getReturnCode(){
  /*=====================================
          Class MqttsUnsubscribe
   ======================================*/
-MqttsUnsubscribe::MqttsUnsubscribe(){
+MqttsUnsubscribe::MqttsUnsubscribe() : MqttsSubscribe(){
     setType(MQTTS_TYPE_UNSUBSCRIBE);
 }
 MqttsUnsubscribe::~MqttsUnsubscribe(){
@@ -921,18 +921,22 @@ uint16_t MqttsUnSubAck::getMsgId(){
 /*=====================================
         Class MqttsPingReq
  ======================================*/
-MqttsPingReq::MqttsPingReq(){
-  setLength(ZB_MAX_NODEID + 3);
+MqttsPingReq::MqttsPingReq(MQString* id){
+  setLength(id->getDataLength() + 2);
   setType(MQTTS_TYPE_PINGREQ);
   allocateBody();
-  setLength(2);
+  id->writeBuf(getBody());
+
 }
 MqttsPingReq::~MqttsPingReq(){
 
 }
+/*
 void MqttsPingReq::setClientId(MQString* id){
     id->writeBuf(getBody());
 }
+*/
+
 char* MqttsPingReq::getClientId(){
     return (char*)getBody();
 }
@@ -943,6 +947,7 @@ char* MqttsPingReq::getClientId(){
 MqttsPingResp::MqttsPingResp(){
     setLength(2);
     setType(MQTTS_TYPE_PINGRESP);
+    allocateBody();
 }
 MqttsPingResp::~MqttsPingResp(){
 
@@ -954,6 +959,7 @@ MqttsPingResp::~MqttsPingResp(){
 MqttsDisconnect::MqttsDisconnect(){
     setLength(4);
     setType(MQTTS_TYPE_DISCONNECT);
+    allocateBody();
 }
 MqttsDisconnect::~MqttsDisconnect(){
 
