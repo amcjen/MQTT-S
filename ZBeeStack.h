@@ -38,22 +38,32 @@
 #ifndef ZBEESTACK_H_
 #define ZBEESTACK_H_
 
-
+#ifndef ARDUINO
+        #include "MQTTS_Defines.h"
+#else
+        #include <MQTTS_Defines.h>
+#endif
 
 #if defined(ARDUINO) && ARDUINO >= 100
-  #include "Arduino.h"
+	#include "Arduino.h"
 	#include <inttypes.h>
-        #include <MQTTS_Defines.h>
 #else
 	#if defined(ARDUINO) && ARDUINO < 100
 		#include "WProgram.h"
 		#include <inttypes.h>
-                #include <MQTTS_Defines.h>
-	#else
-		#include "MQTTS_Defines.h"
-		#include <sys/time.h>
-                #include <iostream>
-	#endif
+    #endif
+#endif /* ARDUINO */
+
+#ifdef MBED
+	#include "mbed.h"
+
+	#define ZB_MBED_SERIAL_TXPIN  ()
+	#define ZB_MBED_SERIAL_RXPIN  ()
+#endif
+
+#ifdef LINUX
+	#include <sys/time.h>
+	#include <iostream>
 #endif
 
 #define START_BYTE 0x7e
@@ -113,8 +123,6 @@
 #define COORDINATOR_REALIGNMENT 5
 #define COORDINATOR_STARTED 6
 
-#define ZB_BROADCAST_RADIUS_MAX_HOPS 0
-
 #define ZB_TX_UNICAST 0
 #define ZB_TX_BROADCAST 8
 
@@ -130,13 +138,13 @@ typedef  uint8_t ZBNodeType;
 
 
 #define  PACKET_CORRECT          0
-#define  PACKET_ERROR_TIMEOUT    -1
-#define  PACKET_ERROR_RESPONSE   -2
-#define  PACKET_ERROR_NOTHING    -3
+#define  PACKET_ERROR_RESPONSE   -1
+#define  PACKET_ERROR_UNKOWN    -2
+#define  PACKET_ERROR_NODATA     -3
 
 #define  ZB_WAIT_NORESP    0
 #define  ZB_WAIT_AT_RESP   1
-#define  ZB_WAIT_TX_RESP   2
+#define  ZB_WAIT_RX_RESP   2
 
 #define  ZB_SEND_REQ_NO    0
 #define  ZB_SEND_REQ_AT    1
@@ -145,23 +153,24 @@ typedef  uint8_t ZBNodeType;
 /*
  *   Packet Read Constants
  */
-#define  TIMEOUT_RETRY_COUNT 3
 #ifdef ARDUINO
-#define PACKET_TIMEOUT   1000
-#define PACKET_TIMEOUT_MIN 500
+#define PACKET_TIMEOUT 100
+#define PACKET_TIME_OUT_RESP  1000
 #else
-#define PACKET_TIMEOUT   1000
-#define PACKET_TIMEOUT_MIN 500
+#define PACKET_TIME_OUT_RESP  1000
+#define PACKET_TIMEOUT 100
 #endif
 
 /*
  *   MQTTS  Client's state
  */
-#define MQTTS_DEVISE_DISCONNECTED     0
-#define MQTTS_DEVISE_ACTIVE           1
-#define MQTTS_DEVISE_ASLEEP           2
+#define MQTTS_DEVICE_DISCONNECTED     0
+#define MQTTS_DEVICE_ACTIVE           1
+#define MQTTS_DEVICE_ASLEEP           2
 #define MQTTS_DEVICE_AWAKE            3
 #define MQTTS_DEVICE_LOST             4
+
+
 /*============================================
               XBeeAddress64
  =============================================*/
@@ -200,11 +209,8 @@ public:
   void setFrameData(uint8_t *frameDataPtr);
   void setFrameDataLength(uint8_t frameLength);
 
-  void getZBTxStatusResponse(XBeeResponse &response);
   void getZBRxResponse(XBeeResponse &response);
   void getAtCommandResponse(XBeeResponse &response);
-  void getModemStatusResponse(XBeeResponse &response);
-  void getNodeIdentificationIndicator(XBeeResponse &response);
 
   bool isAvailable();
   void setAvailable(bool complete);
@@ -249,17 +255,6 @@ private:
 };
 
 /*============================================
-                ModemStatusResponse
- =============================================*/
-
-class ModemStatusResponse : public XBeeResponse {
-public:
-  ModemStatusResponse();
-  uint8_t getStatus();
-
-};
-
-/*============================================
                 FrameIdResponse
  =============================================*/
 
@@ -285,21 +280,6 @@ public:
   uint8_t getValueLength();
   bool isOk();
 };
-
-/*============================================
-                ZBTxStatusResponse
- =============================================*/
-
-class ZBTxStatusResponse : public FrameIdResponse {
-public:
-  ZBTxStatusResponse();
-  uint16_t getRemoteAddress();
-  uint8_t getTxRetryCount();
-  uint8_t getDeliveryStatus();
-  uint8_t getDiscoveryStatus();
-  bool isSuccess();
-};
-
 
 /*============================================*
                 XBeeRequest
@@ -387,9 +367,9 @@ private:
 /*===========================================
                 SerialPort
  ============================================*/
+#ifndef ZBEE_EMULATION
 
 #ifdef ARDUINO
-
 #include <Stream.h>
 class SerialPort{
 public:
@@ -402,8 +382,26 @@ public:
 private:
         Stream* _serial;
 };
-#else
-#ifndef ZBEE_EMULATION
+#endif /* ARDUINO */
+
+#ifdef MBED
+/*-------------------------
+    For MBED
+ --------------------------*/
+class SerialPort{
+public:
+        SerialPort( );
+        void begin(long baudrate);
+        bool send(unsigned char b);
+        bool recv(unsigned char* b);
+        void flush();
+
+private:
+        Serial* _serial;
+};
+#endif /* MBED */
+
+#ifdef LINUX
 /*-------------------------
     For Linux
  --------------------------*/
@@ -411,6 +409,7 @@ private:
 class SerialPort{
 public:
         SerialPort();
+        ~SerialPort();
         int begin(const char* devName);
         int begin(const char* devName,
                    unsigned int boaurate);
@@ -426,6 +425,8 @@ private:
         int _fd;  // file descriptor
         struct termios _tio;
 };
+#endif /* LINUX */
+
 #else
 /*----------------------------------
        for Emulation
@@ -443,7 +444,7 @@ private:
 };
 #endif /* ZBEE_EMULATION */
 
-#endif /* ARDUINO */
+
 
 /*============================================
                 XBeeTimer
@@ -517,7 +518,7 @@ public:
     void      setLsb(uint32_t lsb);
     void      setAddress16(uint16_t addr);
     void      setNodeStatus(uint8_t stat);
-    void      setNodeId(char* id);
+    void      setNodeId(const char* id);
     void      setDeviceType(uint8_t type);
     bool      isGateway();
     bool      isClient();
@@ -555,36 +556,37 @@ private:
  ============================================*/
 class ZBeeStack {
 public:
-  ZBeeStack(uint16_t readTimeout = PACKET_TIMEOUT,
-  uint8_t timeoutRetryCnt = TIMEOUT_RETRY_COUNT);
+  ZBeeStack();
   int     sendAt(const char* cmd);
   int     sendAt(const char* cmd, uint8_t* cmdValue, uint8_t valueLenght);
   int     sendData(XBeeAddress64* addr64, uint16_t addr16, uint8_t* xmitData, uint8_t dataLen,
-                    uint8_t flg = ZB_TX_UNICAST, uint16_t packetReadTimeout = PACKET_TIMEOUT_MIN);
-  int     bcastData(uint8_t* xmitData, uint8_t dataLen, uint16_t packetReadTimeout = PACKET_TIMEOUT_MIN);
-  void   setRxHandler(void (*callbackPtr)(ZBRxResponse* data, int* returnCode));
-  void   setSerialPort(SerialPort *serialPort);
-  bool   setNodeId(const char* id);
-  int    readPacket(uint16_t packetReadTimeout);
+                    uint8_t flg = ZB_TX_UNICAST);
+  int     bcastData(uint8_t* xmitData, uint8_t dataLen);
+  void    setRxHandler(void (*callbackPtr)(ZBRxResponse* data, int* returnCode));
+  void    setSerialPort(SerialPort *serialPort);
+  int     readPacket();
+  int     readResp();
+  void    setReceivePacketTimeout(long timeout);
   XBeeAddress64& getRxRemoteAddress64();
-  uint16_t  getRxRemoteAddress16();
+  uint16_t       getRxRemoteAddress16();
+  const char*         getNodeId();
 
   AtCommandResponse*  getAtResponse();
-  ZBTxStatusResponse* getTxResponse();
   ZBRxResponse*       getRxResponse();
   ZBRxResponse*       getRxData();
-  ZBNode   getZBNode();
+  ZBNode              getZBNode();
 
-  bool init(ZBNodeType type);    // ZB_COORDINATOR, ZB_GATEWAY, ZB_CLIENT
+  bool init(ZBNodeType type, const char* nodeId);    // ZB_COORDINATOR, ZB_GATEWAY, ZB_CLIENT
+
 private:
-  int  packetHandle(uint16_t packetReadtimeout);
+  int  packetHandle();
+  bool setNodeId(const char* id);
+
   XBee _xbee;
   AtCommandRequest     _atRequest;
   ZBTxRequest          _txRequest;
   AtCommandResponse    _atResp;
-  ZBTxStatusResponse   _txStatResp;
   ZBRxResponse         _rxResp;
-  ModemStatusResponse  _mStatResp;
   ZBNode               _zbNode;
   AtCommandRequest     _atRetryRequest;
   ZBTxRequest          _txRetryRequest;
@@ -596,26 +598,9 @@ private:
   uint8_t _respWaitStat;  // 0:no wait  1:AtResp   2:TxResp
   uint8_t _sendReqStat;   // 0:no req   1:AtReq    2:TxReq
   bool   _rxDataReady;
-  uint16_t _readTimeout;
-  uint8_t _timeoutRetryCnt;
+  long   _readTimeout;
 
   void (*_rxCallbackPtr)(ZBRxResponse* data, int* returnCode);
-};
-
-/*===========================================
-          Class  EmulateResponse
- ============================================*/
-class EmulateResponse : public ZBRxResponse {
-public:
-  EmulateResponse();
-  ~EmulateResponse();
-  void setRemoteAddress64(uint32_t msb, uint32_t lsb);
-  void setRemoteAddress16(uint16_t addr);
-  void setOption(uint8_t opt);
-  void setData(uint8_t* data, uint8_t len);
-private:
-  uint16_t _addr16;
-  uint8_t _option;
 };
 
 #endif  /* ZBEESTACK_H_ */
