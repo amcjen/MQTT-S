@@ -25,9 +25,9 @@
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * 
  * 
- *  Created on: 2013/06/02
+ *  Created on: 2013/06/08
  *      Author: Tomoaki YAMAGUCHI
- *     Version:
+ *     Version: 0.3.0
  *
  */
 
@@ -153,7 +153,7 @@ void GatewayHandller::setLastSendTime(){
 void GatewayHandller::recvAdvertise(MqttsAdvertise* adv){
     if ( adv->getGwId() == _gwId){
         _advertiseTimer.start();
-        _advertiseDuration = adv->getDuration();
+        _advertiseDuration = adv->getDuration() * 1.5;
         _gwId = adv->getGwId();
     }
 }
@@ -383,7 +383,7 @@ int MqttsClient::execMsgRequest(){
                getMsgRequestType() == MQTTS_TYPE_WILLTOPIC ||
                getMsgRequestType() == MQTTS_TYPE_WILLMSG){
                rc = unicast(MQTTS_TIME_RESPONCE);
-               if (rc == 0){
+               if (rc == 0 && _qos == 0){
                    _gwHdl.setStatus(MQTTS_GW_CONNECTED);
                }
                return rc;
@@ -425,7 +425,6 @@ int MqttsClient::broadcast(uint16_t packetReadTimeout){
            }else if (getMsgRequestStatus() == MQTTS_MSG_REQUEST){
                setMsgRequestStatus(MQTTS_MSG_WAIT_ACK);
            }
-           printf("*");
            _zbee->readResp();
         }
         setMsgRequestStatus(MQTTS_MSG_REQUEST);
@@ -463,7 +462,6 @@ int MqttsClient::unicast(uint16_t packetReadTimeout){
                 setMsgRequestStatus(MQTTS_MSG_WAIT_ACK);
 
             }else if (getMsgRequestStatus() == MQTTS_MSG_REQUEST){
-  printf("WAIT_ACK\n"); /////////////////////////////////////////
                 setMsgRequestStatus(MQTTS_MSG_WAIT_ACK);
             }
             _zbee->readResp();
@@ -489,7 +487,6 @@ int MqttsClient::connect(){
 /*--------- PUBLISH ------*/
 int MqttsClient::publish(MQString* topic, const char* data, int dataLength){
   uint16_t topicId = _topics.getTopicId(topic);
-  topicId = 0x1234;   ////////////////////   DEBUG    ///////////////////////
   if (topicId){
       MqttsPublish mqttsMsg = MqttsPublish();
       mqttsMsg.setFlags(_clientFlg);
@@ -515,6 +512,7 @@ int MqttsClient::registerTopic(MQString* topic){
 
 /*--------- SUBSCRIBE ------*/
 int MqttsClient::subscribe(MQString* topic, Callback* callback){
+  // ToDo   Debug
     MqttsSubscribe mqttsMsg = MqttsSubscribe();
     uint16_t topicId = _topics.getTopicId(topic);
     if (topicId){
@@ -531,6 +529,7 @@ int MqttsClient::subscribe(MQString* topic, Callback* callback){
 
 /*--------- UNSUBSCRIBE ------*/
 int MqttsClient::unsubscribe(MQString* topic){
+  // ToDo   Debug
     MqttsUnsubscribe mqttsMsg = MqttsUnsubscribe();
     uint16_t topicId = _topics.getTopicId(topic);
     if (topicId){
@@ -547,6 +546,7 @@ int MqttsClient::unsubscribe(MQString* topic){
 
 /*--------- DISCONNECT ------*/
 int MqttsClient::disconnect(uint16_t duration){
+  // ToDo   Debug
     MqttsDisconnect mqttsMsg = MqttsDisconnect();
     if (duration){
         mqttsMsg.setDuration(duration);
@@ -575,6 +575,7 @@ int  MqttsClient::pingResp(){
 
 /*--------- WILLTOPIC ------*/
 int MqttsClient::willTopic(){
+  // ToDo   Debug
     MqttsWillTopic mqttsMsg = MqttsWillTopic();
     mqttsMsg.setFlags(_clientFlg);
     mqttsMsg.setWillTopic(_willTopic);
@@ -583,6 +584,7 @@ int MqttsClient::willTopic(){
 
 /*--------- WILLMSG ------*/
 int MqttsClient::willMsg(){
+  // ToDo   Debug
     MqttsWillMsg mqttsMsg = MqttsWillMsg();
     mqttsMsg.setWillMsg(_willMessage);
     return requestSendMsg((MqttsMessage*)&mqttsMsg);
@@ -609,16 +611,16 @@ void MqttsClient::recieveMessageHandler(ZBRxResponse* recvMsg, int* returnCode){
                 #endif
             #endif /* DEBUG_MQTTS */
         MqttsPublish mqMsg = MqttsPublish();
-        memcpy(mqMsg.getMsgBuff()->getBuff(), recvMsg->getData(), mqMsg.getFrameLength());
+        mqMsg.setFrame(recvMsg->getData(), recvMsg->getData()[0]);
 
         if ( _gwHdl.getAddress16() == getRxRemoteAddress16()){
             _pubHdl.exec(&mqMsg,&_topics);
         }
 
 /*---------  PUBACK  ----------*/
-    }else if (recvMsg->getData()[1] == MQTTS_TYPE_PUBACK && getMsgRequestType() == MQTTS_MSG_WAIT_ACK){
+    }else if (recvMsg->getData()[1] == MQTTS_TYPE_PUBACK && getMsgRequestStatus() == MQTTS_MSG_WAIT_ACK){
         MqttsPubAck mqMsg = MqttsPubAck();
-        memcpy(mqMsg.getMsgBuff()->getBuff(), recvMsg->getData(), mqMsg.getFrameLength());
+        memcpy(mqMsg.getMsgBuff()->getBuff(), recvMsg->getData(), recvMsg->getData()[0]);
             #ifdef DEBUG_MQTTS
                 #ifdef ARDUINO
                   debug.print("\nPUBACK ReturnCode=");
@@ -633,22 +635,17 @@ void MqttsClient::recieveMessageHandler(ZBRxResponse* recvMsg, int* returnCode){
                 #endif
             #endif /* DEBUG_MQTTS */
 
-        if (mqMsg.getMsgId() == getLong(_sendQ->getMessage(0)->getBody() + 2)){
-          if (mqMsg.getReturnCode() == MQTTS_RC_REJECTED_CONGESTION){
-              if (_nRetryCnt++ < _nRetry){
-                  setMsgRequestStatus(MQTTS_MSG_REQUEST);
-              }else{
-                  *returnCode = MQTTS_ERR_REJECTED;
-              }
-          }else if (mqMsg.getReturnCode() == MQTTS_RC_ACCEPTED){
-              setMsgRequestStatus(MQTTS_MSG_COMPLETE);
-              *returnCode = MQTTS_ERR_NO_ERROR;
-          }else{
-              setMsgRequestStatus(MQTTS_MSG_REJECTED);
-              *returnCode = MQTTS_ERR_REJECTED;
-          }
-        }else{
-            *returnCode = MQTTS_ERR_NO_ERROR;
+        if (mqMsg.getMsgId() == getLong(_sendQ->getMessage(0)->getBody() + 3)){
+            if (mqMsg.getReturnCode() == MQTTS_RC_ACCEPTED){
+                setMsgRequestStatus(MQTTS_MSG_COMPLETE);
+
+            }else if (mqMsg.getReturnCode() == MQTTS_RC_REJECTED_CONGESTION){
+                  setMsgRequestStatus(MQTTS_MSG_RESEND_REQ);
+
+            }else{
+                *returnCode = MQTTS_ERR_REJECTED;
+                setMsgRequestStatus(MQTTS_MSG_REJECTED);
+            }
         }
 
 /*---------  PINGRESP  ----------*/
@@ -700,8 +697,10 @@ void MqttsClient::recieveMessageHandler(ZBRxResponse* recvMsg, int* returnCode){
         *returnCode = MQTTS_ERR_NO_ERROR;
 
         MqttsAdvertise mqMsg = MqttsAdvertise();
-        memcpy(mqMsg.getMsgBuff()->getBuff(), recvMsg->getData(), mqMsg.getFrameLength());
+        memcpy(mqMsg.getMsgBuff()->getBuff(), recvMsg->getData(), recvMsg->getData()[0]);
         _gwHdl.recvAdvertise(&mqMsg);
+
+        // ToDo  Update list of gateways.  elements are ZBNode
 
 /*---------  GWINFO  ----------*/
     }else if (recvMsg->getData()[1] == MQTTS_TYPE_GWINFO){
@@ -717,7 +716,7 @@ void MqttsClient::recieveMessageHandler(ZBRxResponse* recvMsg, int* returnCode){
                #endif
            #endif /* DEBUG_MQTTS */
         MqttsGwInfo mqMsg = MqttsGwInfo();
-        memcpy(mqMsg.getMsgBuff()->getBuff(), recvMsg->getData(), mqMsg.getFrameLength());
+        memcpy(mqMsg.getMsgBuff()->getBuff(), recvMsg->getData(), recvMsg->getData()[0]);
         _gwHdl.recvGwInfo(&mqMsg);
         if (getMsgRequestType() == MQTTS_TYPE_SEARCHGW){
             setMsgRequestStatus(MQTTS_MSG_COMPLETE);
@@ -738,13 +737,11 @@ void MqttsClient::recieveMessageHandler(ZBRxResponse* recvMsg, int* returnCode){
             #endif /* DEBUG_MQTTS */
         if (_qos == 1 && getMsgRequestStatus() == MQTTS_MSG_WAIT_ACK){
             MqttsConnack mqMsg = MqttsConnack();
-            memcpy(mqMsg.getMsgBuff()->getBuff(), recvMsg->getData(), mqMsg.getFrameLength());
+            memcpy(mqMsg.getMsgBuff()->getBuff(), recvMsg->getData(), recvMsg->getData()[0]);
 
             if (mqMsg.getReturnCode() == MQTTS_RC_ACCEPTED){
-               setMsgRequestStatus(MQTTS_MSG_COMPLETE);
-              if (getMsgRequestType() == MQTTS_TYPE_WILLMSG){
-                  _gwHdl.setStatus(MQTTS_GW_CONNECTED);
-              }
+                setMsgRequestStatus(MQTTS_MSG_COMPLETE);
+                _gwHdl.setStatus(MQTTS_GW_CONNECTED);
             }else if (mqMsg.getReturnCode() == MQTTS_RC_REJECTED_CONGESTION){
                setMsgRequestStatus(MQTTS_MSG_RESEND_REQ);
             }else{
@@ -755,6 +752,7 @@ void MqttsClient::recieveMessageHandler(ZBRxResponse* recvMsg, int* returnCode){
 
 /*---------  REGISTER  ----------*/
     }else if (recvMsg->getData()[1] == MQTTS_TYPE_REGISTER){
+        // ToDo   Debug
           #ifdef DEBUG_MQTTS
               #ifdef ARDUINO
                   debug.println(" REGISTER received");
@@ -778,37 +776,39 @@ void MqttsClient::recieveMessageHandler(ZBRxResponse* recvMsg, int* returnCode){
     }else if (recvMsg->getData()[1] == MQTTS_TYPE_REGACK){
         if (getMsgRequestStatus() == MQTTS_MSG_WAIT_ACK &&
             getMsgRequestType() == MQTTS_TYPE_REGISTER){
-#ifdef DEBUG_MQTTS
-     #ifdef ARDUINO
-         debug.println(" REGACK received");
-     #endif
-     #ifdef MBED
-           debug.fprintf(stdout," REGACK received\n");
-     #endif
-     #ifdef LINUX
-           fprintf(stdout," REGACK received\n");
-     #endif
- #endif /* DEBUG_MQTTS */
+            // ToDo   Debug
+                #ifdef DEBUG_MQTTS
+                     #ifdef ARDUINO
+                         debug.println(" REGACK received");
+                     #endif
+                     #ifdef MBED
+                           debug.fprintf(stdout," REGACK received\n");
+                     #endif
+                     #ifdef LINUX
+                           fprintf(stdout," REGACK received\n");
+                     #endif
+                 #endif /* DEBUG_MQTTS */
             MqttsRegAck mqMsg = MqttsRegAck();
             memcpy(mqMsg.getMsgBuff()->getBuff(), recvMsg->getData(), mqMsg.getFrameLength());
             if (mqMsg.getMsgId() == getLong(_sendQ->getMessage(0)->getBody() + 2)){
                 if (getLong((uint8_t*)_sendQ->getMessage(0)->getBody()+4)){
-                    if (mqMsg.getReturnCode() == MQTTS_RC_REJECTED_CONGESTION){
-                        setMsgRequestStatus(MQTTS_MSG_RESEND_REQ);
-                    }else if (mqMsg.getReturnCode() == MQTTS_RC_ACCEPTED){
+                    if (mqMsg.getReturnCode() == MQTTS_RC_ACCEPTED){
                         MQString topic;
                         topic.readBuf(_sendQ->getMessage(0)->getBody() + 4);
                         _topics.setTopicId(&topic, mqMsg.getTopicId());
+                        setMsgRequestStatus(MQTTS_MSG_COMPLETE);
+                    }else if (mqMsg.getReturnCode() == MQTTS_RC_REJECTED_CONGESTION){
+                      setMsgRequestStatus(MQTTS_MSG_RESEND_REQ);
                     }else{
                         *returnCode = MQTTS_ERR_REJECTED;
                     }
-                    setMsgRequestStatus(MQTTS_MSG_COMPLETE);
                 }
             }
         }
 
 /*---------  SUBACK  ----------*/
     }else if (recvMsg->getData()[1] == MQTTS_TYPE_SUBACK && getMsgRequestStatus() == MQTTS_MSG_WAIT_ACK){
+        // ToDo   Debug
         MqttsSubAck mqMsg = MqttsSubAck();
         memcpy(mqMsg.getMsgBuff()->getBuff(), recvMsg->getData(), mqMsg.getFrameLength());
 
@@ -827,26 +827,23 @@ void MqttsClient::recieveMessageHandler(ZBRxResponse* recvMsg, int* returnCode){
             #endif /* DEBUG_MQTTS */
 
         if (mqMsg.getMsgId() == getLong(_sendQ->getMessage(0)->getBody() + 1)){
-          if (mqMsg.getReturnCode() == MQTTS_RC_REJECTED_CONGESTION){
-              if (_nRetryCnt++ < _nRetry){
-                  setMsgRequestStatus(MQTTS_MSG_REQUEST);
-              }else{
-                  *returnCode = MQTTS_ERR_REJECTED;
-              }
-          }else if (mqMsg.getReturnCode() == MQTTS_RC_ACCEPTED){
-              setMsgRequestStatus(MQTTS_MSG_COMPLETE);
-              if (_sendQ->getMessage(0)->getBodyLength() > 5){ // TopicName not Id
-                  MQString topic;
-                  topic.readBuf(_sendQ->getMessage(0)->getBody() + 4);
-                  _topics.setTopicId(&topic, mqMsg.getTopicId());
-              }
-          }else{
-              *returnCode = MQTTS_ERR_REJECTED;
-          }
+            if (mqMsg.getReturnCode() == MQTTS_RC_ACCEPTED){
+                setMsgRequestStatus(MQTTS_MSG_COMPLETE);
+                if (_sendQ->getMessage(0)->getBodyLength() > 5){ // TopicName not Id
+                    MQString topic;
+                    topic.readBuf(_sendQ->getMessage(0)->getBody() + 4);
+                    _topics.setTopicId(&topic, mqMsg.getTopicId());
+                }
+            }else if (mqMsg.getReturnCode() == MQTTS_RC_REJECTED_CONGESTION){
+                setMsgRequestStatus(MQTTS_MSG_REQUEST);
+            }else{
+                *returnCode = MQTTS_ERR_REJECTED;
+            }
         }
 
 /*---------  UNSUBACK  ----------*/
     }else if (recvMsg->getData()[1] == MQTTS_TYPE_UNSUBACK && getMsgRequestStatus() == MQTTS_MSG_WAIT_ACK){
+        // ToDo   Debug
           #ifdef DEBUG_MQTTS
                #ifdef ARDUINO
                    debug.println(" UNSUBACK received");
@@ -867,6 +864,7 @@ void MqttsClient::recieveMessageHandler(ZBRxResponse* recvMsg, int* returnCode){
 
 /*---------  WILLMSGRESP  ----------*/
     }else if (recvMsg->getData()[1] == MQTTS_TYPE_WILLMSGRESP && getMsgRequestStatus() == MQTTS_MSG_WAIT_ACK){
+        // ToDo   Debug
             #ifdef DEBUG_MQTTS
                  #ifdef ARDUINO
                      debug.println(" WILLMSGRESP received");
@@ -881,6 +879,7 @@ void MqttsClient::recieveMessageHandler(ZBRxResponse* recvMsg, int* returnCode){
 
 /*---------  WILLTOPICREQ  ----------*/
     }else if (recvMsg->getData()[1] == MQTTS_TYPE_WILLTOPICREQ){
+        // ToDo   Debug
             #ifdef DEBUG_MQTTS
                 #ifdef ARDUINO
                     debug.println(" WILLTOPICREQ received");
@@ -906,6 +905,7 @@ void MqttsClient::recieveMessageHandler(ZBRxResponse* recvMsg, int* returnCode){
 
 /*---------  WILLMSGREQ  -----------*/
     }else if (recvMsg->getData()[1] == MQTTS_TYPE_WILLMSGREQ){
+        // ToDo   Debug
             #ifdef DEBUG_MQTTS
                 #ifdef ARDUINO
                     debug.println(" WILLMSGREQ received");
