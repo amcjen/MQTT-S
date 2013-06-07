@@ -1199,12 +1199,6 @@ void Topics::setSize(uint8_t size){
 SendQue::SendQue(){
     _queCnt = 0;
     _queSize = 5;
-
-    /*
-    for ( int i = 0; i < _queSize; i++){
-        _msg[i] = new MqttsMessage();
-    }
-    */
 }
 SendQue::~SendQue(){
     for( int i = 0; i < _queCnt; i++){
@@ -1319,4 +1313,3 @@ void PublishHandller::exec(MqttsPublish* msg, Topics* topics){
 
 
 /////////////////// End of File ///////////////
-
