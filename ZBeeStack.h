@@ -29,9 +29,9 @@
  * If not, see <http://www.gnu.org/licenses/>.
  *
  * 
- *  Created on: 2013/05/04
+ *  Created on: 2013/06/08
  *      Author: Tomoaki YAMAGUCHI
- *     Version: 0.1
+ *     Version: 0.3.0
  *
  */
 
