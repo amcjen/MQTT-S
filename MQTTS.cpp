@@ -27,9 +27,9 @@
  * If not, see <http://www.gnu.org/licenses/>.
  *
  *
- *  Created on: 2013/05/27
+ *  Created on: 2013/06/08
  *      Author: Tomoaki YAMAGUCHI
- *     Version: 0.2.2
+ *     Version: 0.3.0
  *
  */
 
@@ -659,6 +659,15 @@ void MqttsRegister::setTopicName(MQString* topicName){
     setTopicId(_topicId);
     setMsgId(_msgId);
 }
+
+void MqttsRegister::setFrame(uint8_t* data, uint8_t len){
+    setLength(len);
+    allocateBody();
+    memcpy(getBody(), data, len);
+    _topicId = getLong(data + 2);
+    _msgId = getLong(data + 4);
+}
+
 MQString* MqttsRegister::getTopicName(){
     return &_ustring;
 }
@@ -711,9 +720,7 @@ MqttsPublish::~MqttsPublish(){
 
 void MqttsPublish::setFlags(uint8_t flags){
     _flags = flags & 0xf3;
-    if (_msgBuff->getBuff()){
-            getBody()[0] = _flags;
-    }
+    getBody()[0] = _flags ;
 }
 
 uint8_t MqttsPublish::getFlags(){
@@ -721,25 +728,23 @@ uint8_t MqttsPublish::getFlags(){
 }
 
 void MqttsPublish::setTopicId(uint16_t id){
-  if (_msgBuff->getBuff()){
-     setLong((uint8_t*)(getBody() + 1), id);
-  }
-  _topicId = id;
+    setLong((uint8_t*)(getBody() + 1), id);
+    _topicId = id;
 }
 
 uint16_t MqttsPublish::getTopicId(){
     return _topicId;
 }
 void MqttsPublish::setMsgId(uint16_t msgId){
-    if (_msgBuff->getBuff()){
-       setLong((uint8_t*)(getBody() + 3), msgId);
-    }
+    setLong((uint8_t*)(getBody() + 3), msgId);
     _msgId = msgId;
 }
 
 uint16_t MqttsPublish::getMsgId(){
     return _msgId;
 }
+
+
 void MqttsPublish::setData(uint8_t* data, uint8_t len){
     setLength(7 + len);
     allocateBody();
@@ -748,9 +753,20 @@ void MqttsPublish::setData(uint8_t* data, uint8_t len){
     setMsgId(_msgId);
     setFlags(_flags);
 }
+
 uint8_t*  MqttsPublish::getData(){
     return (uint8_t*)(getBody() + 5);
 }
+
+void MqttsPublish::setFrame(uint8_t* data, uint8_t len){
+    setLength(len);
+    allocateBody();
+    memcpy(getBody(), data, len);
+    _topicId = getLong(data + 3);
+    _msgId = getLong(data + 5);
+    _flags = *(data + 2);
+}
+
 
 /*=====================================
          Class MqttsPubAck
@@ -817,6 +833,9 @@ void MqttsSubscribe::setTopicId(uint16_t id){
 }
 
 uint16_t MqttsSubscribe::getTopicId(){
+    if (_msgBuff->getBuff()){
+        _topicId = getLong(getBody() + 3);
+    }
     return _topicId;
 }
 void MqttsSubscribe::setMsgId(uint16_t msgId){
@@ -827,6 +846,9 @@ void MqttsSubscribe::setMsgId(uint16_t msgId){
 }
 
 uint16_t MqttsSubscribe::getMsgId(){
+    if (_msgBuff->getBuff()){
+        _msgId = getLong(getBody() + 1);
+    }
     return _msgId;
 }
 void MqttsSubscribe::setTopicName(MQString* data){
@@ -836,8 +858,25 @@ void MqttsSubscribe::setTopicName(MQString* data){
     setMsgId(_msgId);
     setFlags(_flags);
 }
+/*--------------------------------------
+ * usage:
+ * MQString.readBuf(msg.getTopicName())
+ ---------------------------------------*/
 uint8_t*  MqttsSubscribe::getTopicName(){
-    return (uint8_t*)(getBody() + 6);
+    return (uint8_t*)(getBody() + 3);
+}
+
+void MqttsSubscribe::setFrame(uint8_t* data, uint8_t len){
+    setLength(len);
+    allocateBody();
+    memcpy(getBody(), data, len);
+    if (len < 8){
+        _topicId = getLong(data + 5);
+    }else{
+        _topicId = 0;
+    }
+    _msgId = getLong(data + 3);
+    _flags = *(data + 2);
 }
 
 /*=====================================
@@ -1311,6 +1350,17 @@ PublishHandller::~PublishHandller(){
 
 }
 void PublishHandller::exec(MqttsPublish* msg, Topics* topics){
+#ifdef DEBUG_MQTTS
+#ifdef ARDUINO
+  debug.println("exec PUBLISH callback");
+#endif
+#ifdef MBED
+    debug.fprintf(stdout,"exec PUBLISH callback\n");
+#endif
+#ifdef LINUX
+    fprintf(stdout,"exec PUBLISH callback\n");
+#endif
+#endif /* DEBUG_MQTTS */
     if (topics->getTopic(msg->getTopicId())){
         topics->getTopic(msg->getTopicId())->execCallback(msg);
     }
