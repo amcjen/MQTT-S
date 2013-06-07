@@ -27,9 +27,9 @@
  * If not, see <http://www.gnu.org/licenses/>.
  *
  *
- *  Created on: 2013/05/28
+ *  Created on: 2013/06/8
  *      Author: Tomoaki YAMAGUCHI
- *     Version: 0.2.3
+ *     Version: 0.3.0
  *
  */
 
@@ -51,7 +51,7 @@
         #if defined(ARDUINO) && ARDUINO < 100
                 #include "WProgram.h"
                 #include <inttypes.h>
-          #include <ZBeeStack.h>
+        	#include <ZBeeStack.h>
         #else
                 #include <sys/time.h>
                 #include <iostream>
@@ -345,7 +345,7 @@ class MqttsWillMsg : public MqttsMessage  {
 public:
 	MqttsWillMsg();
 	~MqttsWillMsg();
-	void setWillMsg(MQString* topic);
+	void setWillMsg(MQString* msg);
 	char* getWillMsg();
 
 private:
@@ -364,6 +364,7 @@ public:
 	void setMsgId(uint16_t msgId);
 	uint16_t getMsgId();
 	void setTopicName(MQString* topicName);
+	void setFrame(uint8_t* data, uint8_t len);
 	MQString* getTopicName();
 
 private:
@@ -405,6 +406,7 @@ public:
 	void setMsgId(uint16_t msgId);
 	uint16_t getMsgId();
 	void setData(uint8_t* data, uint8_t len);
+	void setFrame(uint8_t* data, uint8_t len);
 	uint8_t* getData();
 
 private:
@@ -445,6 +447,7 @@ public:
 	void setTopicName(MQString* topicName);
 	uint8_t* getTopicName();
 	void setTopicId(uint16_t topicId);
+	void setFrame(uint8_t* data, uint8_t len);
 	uint16_t getTopicId();
 
 private:
@@ -504,9 +507,9 @@ private:
  ======================================*/
 class MqttsPingReq : public MqttsMessage  {
 public:
-	MqttsPingReq();
+	MqttsPingReq(MQString* id);
 	~MqttsPingReq();
-	void setClientId(MQString* id);
+	//void setClientId(MQString* id);
 	char* getClientId();
 private:
 
