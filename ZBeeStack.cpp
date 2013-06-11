@@ -27,9 +27,9 @@
  * You should have received a copy of the GNU General Public License
  * If not, see <http://www.gnu.org/licenses/>.
  *
- *  Created on: 2013/06/08
+ *  Created on: 2013/06/11
  *  Author:     Tomoaki YAMAGUCHI
- *  Version:    0.3.0
+ *  Version:    0.4.0
  *
  */
 #ifndef ARDUINO
