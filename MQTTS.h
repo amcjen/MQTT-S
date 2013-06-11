@@ -27,9 +27,9 @@
  * If not, see <http://www.gnu.org/licenses/>.
  *
  *
- *  Created on: 2013/06/8
+ *  Created on: 2013/06/11
  *      Author: Tomoaki YAMAGUCHI
- *     Version: 0.3.0
+ *     Version: 0.4.0
  *
  */
 
@@ -102,14 +102,14 @@
 #define MQTTS_TOPIC_TYPE_SHORT      0x02
 
 
-#define MQTTS_FLAG_DUP     (0x1 << 7)
-#define MQTTS_FLAG_QOS_0   (0x0 << 5)
-#define MQTTS_FLAG_QOS_1   (0x1 << 5)
-#define MQTTS_FLAG_QOS_2   (0x2 << 5)
-#define MQTTS_FLAG_QOS_N1  (0x3 << 5)
-#define MQTTS_FLAG_RETAIN  (0x1 << 4)
-#define MQTTS_FLAG_WILL    (0x1 << 3)
-#define MQTTS_FLAG_CLEAN   (0x1 << 2)
+#define MQTTS_FLAG_DUP     0b10000000
+#define MQTTS_FLAG_QOS_0   0b00000000
+#define MQTTS_FLAG_QOS_1   0b00100000
+#define MQTTS_FLAG_QOS_2   0b01000000
+#define MQTTS_FLAG_QOS_N1  0b01100000
+#define MQTTS_FLAG_RETAIN  0b00010000
+#define MQTTS_FLAG_WILL    0b00001000
+#define MQTTS_FLAG_CLEAN   0b00000100
 
 #define MQTTS_PROTOCOL_ID  0x01
 #define MQTTS_HEADER_SIZE  2
@@ -152,6 +152,7 @@
 extern uint16_t getLong(uint8_t* pos);
 extern void setLong(uint8_t* pos, uint16_t val);
 
+
 /*=====================================
         Class MQString
  =====================================*/
@@ -168,6 +169,7 @@ public:
     void    copy(MQString* str);
     void    copy(const char* str);
     void    copy(char* str);
+    MQString* create();
     void    writeBuf(uint8_t* buf);
     void    readBuf(uint8_t* buf);
     uint8_t getChar(long index);
@@ -281,6 +283,7 @@ public:
     uint8_t* getClientId();
     uint8_t getFlags();
     uint16_t getDuration();
+    void setFrame(uint8_t* data, uint8_t len);
 private:
  };
 
@@ -320,6 +323,8 @@ public:
 	void setFlags(uint8_t flags);
 	void setWillTopic(MQString* topic);
 	MQString* getWillTopic();
+	uint8_t getQos();
+	bool isWillRequired();
 
 private:
 	uint8_t _flags;
@@ -365,6 +370,7 @@ public:
 	uint16_t getMsgId();
 	void setTopicName(MQString* topicName);
 	void setFrame(uint8_t* data, uint8_t len);
+	void setFrame(ZBRxResponse* resp);
 	MQString* getTopicName();
 
 private:
@@ -403,10 +409,14 @@ public:
 	uint8_t getFlags();
 	void setTopicId(uint16_t id);
 	uint16_t getTopicId();
+	uint8_t  getTopicType();
+	uint8_t  getQos();
+	bool isRetain();
 	void setMsgId(uint16_t msgId);
 	uint16_t getMsgId();
 	void setData(uint8_t* data, uint8_t len);
 	void setFrame(uint8_t* data, uint8_t len);
+	void setFrame(ZBRxResponse* resp);
 	uint8_t* getData();
 
 private:
@@ -444,12 +454,14 @@ public:
 	uint8_t getFlags();
 	void setMsgId(uint16_t msgId);
 	uint16_t getMsgId();
+	uint16_t getTopicId();
+        uint8_t  getTopicType();
+        uint8_t  getQos();
 	void setTopicName(MQString* topicName);
 	uint8_t* getTopicName();
 	void setTopicId(uint16_t topicId);
-	void setFrame(uint8_t* data, uint8_t len);
-	uint16_t getTopicId();
-
+        void setFrame(uint8_t* data, uint8_t len);
+        void setFrame(ZBRxResponse* resp);
 private:
 	uint16_t _topicId;
 	uint8_t  _flags;
@@ -465,6 +477,7 @@ public:
 	~MqttsSubAck();
 	void setFlags(uint8_t flags);
 	uint8_t getFlags();
+	uint8_t getQos();
 	void setMsgId(uint16_t msgId);
 	uint16_t getMsgId();
 	void setTopicId(uint16_t topicId);
@@ -549,12 +562,14 @@ public:
 	Callback();
 	void exec(void);
 	void exec(ZBRxResponse* data, int* returnCode);
-	void exec(MqttsPublish* msg);
+	//void exec(MqttsPublish* msg);
 };
 
 /*=====================================
         Class Topic
  ======================================*/
+typedef int (*TopicCallback)(MqttsPublish*);
+
 class Topic {
 public:
     Topic();
@@ -564,23 +579,22 @@ public:
     MQString*  getTopicName();
     uint8_t   getTopicLength();
     uint8_t   getTopicType();
-    Callback* getCallback();
+    TopicCallback getCallback();
     void     setTopicId(uint16_t id);
     void     setTopicName(MQString* topic);
     void     setStatus(uint8_t stat);
     void     setTopicType(uint8_t type);
-    void     execCallback(MqttsPublish* msg);
+    int      execCallback(MqttsPublish* msg);
     void     copy(Topic* src);
-    void     setCallback(Callback* callback);
+    void     setCallback(TopicCallback callback);
     uint8_t   isWildCard();
     bool     isMatch(Topic* wildCard);
 private:
     uint16_t  _topicId;
-    //uint8_t   _topicLength;
     uint8_t   _topicType;
     uint8_t   _status;
     MQString*  _topicStr;
-    Callback*  _callback;
+    TopicCallback  _callback;
 };
 
 /*=====================================
@@ -594,10 +608,11 @@ public:
       uint16_t  getTopicId(MQString* topic);
       Topic*    getTopic(MQString* topic);
       Topic*    getTopic(uint16_t topicId);
+      uint8_t   getTopicType(MQString* topic);
       bool     setTopicId(MQString* topic, uint16_t id);
-      bool     setCallback(MQString* topic, Callback* callback);
-      bool     setCallback(uint16_t topicId, Callback* callback);
-      void     execCallback(uint16_t  topicId, MqttsPublish* msg);
+      bool     setCallback(MQString* topic, TopicCallback callback);
+      bool     setCallback(uint16_t topicId, TopicCallback callback);
+      int     execCallback(uint16_t  topicId, MqttsPublish* msg);
       void     addTopic(MQString* topic, uint8_t type = MQTTS_TOPIC_TYPE_NORMAL);
       Topic*    match(MQString* topic);
       void     setSize(uint8_t size);
@@ -622,6 +637,7 @@ public:
     void setStatus(uint8_t index, uint8_t status);
     MqttsMessage* getMessage(uint8_t index);
     uint8_t getStatus(uint8_t index);
+    uint8_t getCount();
     int deleteRequest(uint8_t index);
     void   deleteAllRequest();
     void setQueSize(uint8_t sz);
