@@ -25,9 +25,9 @@
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * 
  * 
- *  Created on: 2013/06/08
+ *  Created on: 2013/06/11
  *      Author: Tomoaki YAMAGUCHI
- *     Version: 0.3.0
+ *     Version: 0.4.0
  *
  */
 
@@ -116,6 +116,7 @@ public:
     void clearMsgRequest();
     uint8_t getMsgRequestType();
     uint8_t getMsgRequestStatus();
+    uint8_t getMsgRequestCount();
     XBeeAddress64& getRxRemoteAddress64();
     uint16_t getRxRemoteAddress16();
     MQString* getClientId();
@@ -125,16 +126,16 @@ public:
     int  connect();
     int  publish(MQString* topic, const char* data, int dataLength);
     int  registerTopic(MQString* topic);
-    int  subscribe(MQString* topic, Callback* callback);
+    int  subscribe(MQString* topic, uint8_t type, TopicCallback callback);
     int  unsubscribe(MQString* topic);
-    int  disconnect(uint16_t duration);
+    int  disconnect(uint16_t duration = 0);
     int  willTopic();
     int  willMsg();
     bool init(const char* clientIdName);
     int  execMsgRequest();
     void recieveMessageHandler(ZBRxResponse* msg, int* returnCode);
     void publishHdl(MqttsPublish* msg);
-    void createTopic(MQString* topic, uint8_t type, Callback* callback);
+    void createTopic(MQString* topic, uint8_t type, TopicCallback callback);
 
 private:
     int  searchGw(uint8_t radius);
@@ -145,6 +146,7 @@ private:
     int  broadcast(uint16_t packetReadTimeout);
     int  unicast(uint16_t packetReadTimeout);
     void delayTime(long baseTime);
+    void copyMsg(MqttsMessage* msg, ZBRxResponse* recvMsg);
 
     ZBeeStack*       _zbee;
     SerialPort*      _sp;
