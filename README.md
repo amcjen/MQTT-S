@@ -45,9 +45,9 @@ MQTT-S Client via XBee  (running on linux and Arduino)
     
     mqtts.setKeepAlive(60000);   // PINGREQ interval time
     
-    mqtts.connect();   // CONNECT  when the gateway is lost, SEARCHGW is sent automatically.
+    mqtts.connect();   // Before CONNECT, SEARCHGW is sent automatically, if the gateway is lost.
 
-    mqtts.subscribe(topic, callback); // when the subscribed topic's data is publish, execute the callback.
+    mqtts.subscribe(topic, callback); // Execute the callback, when the subscribed topic's data is published.
     
     mqtts.registerTopic(topic);  // Register topic and aquire a Topic ID
     
@@ -74,6 +74,14 @@ MQTT-S Client via XBee  (running on linux and Arduino)
     //#define MBED
     
     select the system and uncoment it.
+    
+    6) MqttsGateway.cpp
+    
+    Gateway dummy Class for debug. Not real gateway.
+    
+    7) MqttsGatewayApp.cpp
+    
+    Gateway application for Debug. 
    
    
   
