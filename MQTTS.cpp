@@ -27,9 +27,9 @@
  * If not, see <http://www.gnu.org/licenses/>.
  *
  *
- *  Created on: 2013/06/08
+ *  Created on: 2013/06/11
  *      Author: Tomoaki YAMAGUCHI
- *     Version: 0.3.0
+ *     Version: 0.4.0
  *
  */
 
@@ -154,6 +154,13 @@ void MQString::copy(MQString* str){
     }
 }
 
+MQString* MQString::create(){
+    char* newStr = (char*)calloc(getDataLength(), sizeof(char));
+    memcpy(newStr, getConstStr(), getCharLength());
+    MQString* newPtr = new MQString(newStr);
+    return newPtr;
+}
+
 void MQString::copy(const char* str){
     _length = strlen(str);
     _constStr = str;
@@ -219,10 +226,6 @@ Callback::Callback(){
 }
 
 void Callback::exec(void){
-
-}
-
-void Callback::exec(MqttsPublish* msg){
 
 }
 
@@ -365,7 +368,6 @@ bool MqttsMessage::copy(MqttsMessage* src){
     if (_msgBuff == NULL){
         return false;
     }
-    //memcpy(_frameData, src->getFrameData(), src->getLength());
 
 #ifdef DEBUG_MQTTS
 	#ifdef ARDUINO
@@ -385,7 +387,6 @@ bool MqttsMessage::copy(MqttsMessage* src){
 #endif /* DEBUG_MQTTS */
     return true;
 }
-
 
 /*=====================================
         Class MqttsAdvrtise
@@ -477,7 +478,7 @@ MqttsConnect::~MqttsConnect(){
 }
 
 void MqttsConnect::setFlags(uint8_t flg){
-    getBody()[0] = flg & 0x04;
+    getBody()[0] = flg & 0x0c;
 }
 
 uint8_t MqttsConnect::getFlags(){
@@ -493,17 +494,20 @@ uint16_t MqttsConnect::getDuration(){
 }
 
 void MqttsConnect::setClientId(MQString* id){
-  /*
-    memcpy((char*)getBody() + 6, id, strlen(id));
-    setLong(getBody() + 4, strlen(id));
-    setLength(strlen(id) + 6);
- */
     id->writeBuf(getBody() + 4);
     setLength(id->getDataLength() + 6);
 }
 
 uint8_t* MqttsConnect::getClientId(){
     return getBody() + 6;
+}
+
+void MqttsConnect::setFrame(uint8_t* data, uint8_t len){
+    setLength(len);
+    allocateBody();
+    memcpy(getBody(), data, len);
+    getBody()[2] = getLong(data + 4);
+    getBody()[0] = *(data + 2);
 }
 
 /*=====================================
@@ -555,7 +559,7 @@ MqttsWillTopic::~MqttsWillTopic(){
 }
 
 void MqttsWillTopic::setFlags(uint8_t flags){
-    flags &= 0x07;
+    flags &= 0x70;
     if (_msgBuff->getBuff()){
             getBody()[0] = flags;
     }
@@ -576,6 +580,14 @@ MQString* MqttsWillTopic::getWillTopic(){
     }else{
         return NULL;
     }
+}
+
+bool MqttsWillTopic::isWillRequired(){
+    return getBody()[0] & 0b00010000;
+}
+
+uint8_t MqttsWillTopic::getQos(){
+    return _flags && 0b01100000;
 }
 
 /*=====================================
@@ -633,9 +645,10 @@ MqttsRegister::MqttsRegister(){
 MqttsRegister::~MqttsRegister(){
 
 }
+
 void MqttsRegister::setTopicId(uint16_t topicId){
     if (_msgBuff->getBuff()){
-            setLong(_msgBuff->getBuff() + 2, topicId);
+            setLong(getBody(), topicId);
     }
     _topicId = topicId;
 }
@@ -644,7 +657,7 @@ uint16_t MqttsRegister::getTopicId(){
 }
 void MqttsRegister::setMsgId(uint16_t msgId){
     if (_msgBuff->getBuff()){
-            setLong(_msgBuff->getBuff() +4, _msgId);
+            setLong(getBody() + 2, msgId);
     }
     _msgId = msgId;
 }
@@ -655,7 +668,7 @@ uint16_t MqttsRegister::getMsgId(){
 void MqttsRegister::setTopicName(MQString* topicName){
     setLength(6 + topicName->getDataLength());
     allocateBody();
-    topicName->writeBuf(getBody());
+    topicName->writeBuf(getBody() + 4);
     setTopicId(_topicId);
     setMsgId(_msgId);
 }
@@ -666,6 +679,10 @@ void MqttsRegister::setFrame(uint8_t* data, uint8_t len){
     memcpy(getBody(), data, len);
     _topicId = getLong(data + 2);
     _msgId = getLong(data + 4);
+}
+
+void MqttsRegister::setFrame(ZBRxResponse* resp){
+    setFrame(resp->getData() + MQTTS_HEADER_SIZE, resp->getData()[0] - MQTTS_HEADER_SIZE);
 }
 
 MQString* MqttsRegister::getTopicName(){
@@ -727,6 +744,18 @@ uint8_t MqttsPublish::getFlags(){
     return _flags;
 }
 
+uint8_t MqttsPublish::getTopicType(){
+    return _flags && 0b00000011;
+}
+
+bool MqttsPublish::isRetain(){
+    return _flags && 0b000010000;
+}
+
+uint8_t MqttsPublish::getQos(){
+    return _flags && 0b01100000;
+}
+
 void MqttsPublish::setTopicId(uint16_t id){
     setLong((uint8_t*)(getBody() + 1), id);
     _topicId = id;
@@ -768,6 +797,10 @@ void MqttsPublish::setFrame(uint8_t* data, uint8_t len){
 }
 
 
+void MqttsPublish::setFrame(ZBRxResponse* resp){
+    setFrame(resp->getData() + MQTTS_HEADER_SIZE, resp->getData()[0] - MQTTS_HEADER_SIZE);
+}
+
 /*=====================================
          Class MqttsPubAck
  ======================================*/
@@ -802,7 +835,7 @@ uint8_t MqttsPubAck::getReturnCode(){
          Class MqttsSubscribe
   ======================================*/
 MqttsSubscribe::MqttsSubscribe(){
-    setLength(7);
+    setLength(5);
     setType(MQTTS_TYPE_SUBSCRIBE);
     allocateBody();
     _topicId = 0;
@@ -817,24 +850,32 @@ MqttsSubscribe::~MqttsSubscribe(){
 void MqttsSubscribe::setFlags(uint8_t flags){
     _flags = flags  & 0xe3;
     if (_msgBuff->getBuff()){
-              getBody()[0] = flags;
+              getBody()[0] = _flags;
       }
 }
 
 uint8_t MqttsSubscribe::getFlags(){
     return _flags;
 }
+uint8_t MqttsSubscribe::getTopicType(){
+    return _flags && 0b00000011;
+}
+
+uint8_t MqttsSubscribe::getQos(){
+    return _flags && 0b01100000;
+}
 
 void MqttsSubscribe::setTopicId(uint16_t id){
+    setLength(7);
+    allocateBody();
+    setMsgId(_msgId);
+    setLong((uint8_t*)(getBody() + 3), id);
     _topicId = id;
-    if (_msgBuff->getBuff()){
-       setLong((uint8_t*)(getBody() + 3), id);
-    }
 }
 
 uint16_t MqttsSubscribe::getTopicId(){
     if (_msgBuff->getBuff()){
-        _topicId = getLong(getBody() + 3);
+        _topicId = getLong(getBody() +3);
     }
     return _topicId;
 }
@@ -852,12 +893,14 @@ uint16_t MqttsSubscribe::getMsgId(){
     return _msgId;
 }
 void MqttsSubscribe::setTopicName(MQString* data){
-    setLength(7 + data->getDataLength());
+    setLength(6 + data->getDataLength());
     allocateBody();
-    data->writeBuf(getBody());
+    data->writeBuf(getBody() + 3);
     setMsgId(_msgId);
     setFlags(_flags);
 }
+
+
 /*--------------------------------------
  * usage:
  * MQString.readBuf(msg.getTopicName())
@@ -871,12 +914,16 @@ void MqttsSubscribe::setFrame(uint8_t* data, uint8_t len){
     allocateBody();
     memcpy(getBody(), data, len);
     if (len < 8){
-        _topicId = getLong(data + 5);
+        _topicId = getLong(data + 4);
     }else{
         _topicId = 0;
     }
-    _msgId = getLong(data + 3);
-    _flags = *(data + 2);
+    _msgId = getLong(data + 1);
+    _flags = *data;
+}
+
+void MqttsSubscribe::setFrame(ZBRxResponse* resp){
+    setFrame(resp->getData() + MQTTS_HEADER_SIZE, resp->getData()[0] - MQTTS_HEADER_SIZE);
 }
 
 /*=====================================
@@ -898,6 +945,10 @@ void MqttsSubAck::setFlags(uint8_t flags){
 
 uint8_t MqttsSubAck::getFlags(){
     return getBody()[0];
+}
+
+uint8_t MqttsSubAck::getQos(){
+    return getBody()[0] && 0b01100000;
 }
 
 void MqttsSubAck::setTopicId(uint16_t id){
@@ -933,14 +984,14 @@ MqttsUnsubscribe::~MqttsUnsubscribe(){
 }
 void MqttsUnsubscribe::setFlags(uint8_t flags){
     if (_msgBuff->getBuff()){
-              getBody()[0] = flags & 0x02;
+              getBody()[0] = flags & 0xe3;
     }
 }
 /*=====================================
          Class MqttsUnSubAck
   ======================================*/
 MqttsUnSubAck::MqttsUnSubAck(){
-    setLength(2);
+    setLength(4);
     setType(MQTTS_TYPE_UNSUBACK);
     allocateBody();
 }
@@ -950,7 +1001,7 @@ MqttsUnSubAck::~MqttsUnSubAck(){
 }
 
 void MqttsUnSubAck::setMsgId(uint16_t msgId){
-    setLong((uint8_t*)(getBody() + 0), msgId);
+    setLong((uint8_t*)getBody(), msgId);
 }
 
 uint16_t MqttsUnSubAck::getMsgId(){
@@ -999,6 +1050,7 @@ MqttsDisconnect::MqttsDisconnect(){
     setLength(4);
     setType(MQTTS_TYPE_DISCONNECT);
     allocateBody();
+
 }
 MqttsDisconnect::~MqttsDisconnect(){
 
@@ -1049,7 +1101,7 @@ uint8_t Topic::getTopicType(){
     return _topicType;
 }
 
-Callback* Topic::getCallback(){
+TopicCallback Topic::getCallback(){
     return _callback;
 }
 
@@ -1069,14 +1121,15 @@ void Topic::setTopicName(MQString* topic){
     _topicStr = topic;
 }
 
-void Topic::setCallback(Callback* callback){
+void Topic::setCallback(TopicCallback callback){
     _callback = callback;
 }
 
-void Topic::execCallback(MqttsPublish* msg){
+int Topic::execCallback(MqttsPublish* msg){
     if(_callback != NULL){
-        _callback->exec(msg);
+        return _callback(msg);
     }
+    return 0;
 }
 
 void Topic::copy(Topic* src){
@@ -1148,6 +1201,15 @@ uint16_t Topics::getTopicId(MQString* topic){
     return 0;
 }
 
+uint8_t Topics::getTopicType(MQString* topic){
+    for (int i = 0; i < _elmCnt; i++) {
+        if ( (_topics[i].getTopicName()->comp(topic) == 0)) {
+            return _topics[i].getTopicType();
+        }
+    }
+      return 0;
+}
+
 Topic* Topics::getTopic(MQString* topic) {
     for (int i = 0; i < _elmCnt; i++) {
         if ( (_topics[i].getTopicName()->comp(topic) == 0)) {
@@ -1176,7 +1238,7 @@ bool Topics::setTopicId(MQString* topic, uint16_t id){
     }
 }
 
-bool Topics::setCallback(MQString* topic, Callback* callback){
+bool Topics::setCallback(MQString* topic, TopicCallback callback){
     Topic* p = getTopic(topic);
     if ( p != NULL) {
         p->setCallback(callback);
@@ -1185,7 +1247,7 @@ bool Topics::setCallback(MQString* topic, Callback* callback){
         return false;
     }
 }
-bool Topics::setCallback(uint16_t topicId, Callback* callback){
+bool Topics::setCallback(uint16_t topicId, TopicCallback callback){
     Topic* p = getTopic(topicId);
     if ( p != NULL) {
         p->setCallback(callback);
@@ -1194,11 +1256,12 @@ bool Topics::setCallback(uint16_t topicId, Callback* callback){
         return false;
     }
 }
-void Topics::execCallback(uint16_t topicId, MqttsPublish* msg){
-  Topic* p = getTopic(topicId);
-      if ( p != NULL) {
-          p->execCallback(msg);
-      }
+int Topics::execCallback(uint16_t topicId, MqttsPublish* msg){
+    Topic* p = getTopic(topicId);
+    if ( p != NULL) {
+        return p->execCallback(msg);
+    }
+    return 0;
 }
 
 void Topics::addTopic(MQString* topic, uint8_t type){
@@ -1338,6 +1401,10 @@ uint8_t SendQue::getStatus(uint8_t index){
       return _msg[index]->getStatus();
   }
   return -1;
+}
+
+uint8_t SendQue::getCount(){
+   return _queCnt;
 }
 
 /*=====================================
