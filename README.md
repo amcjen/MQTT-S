@@ -19,7 +19,7 @@ MQTT-S Client via XBee  (running on linux and Arduino)
   
   1) MqttsClientApp.cpp
   
-  Client application sample which is used for gebugging.
+  Client application sample which is used for debugging.
 
   2) MqttsClient.cpp
   
