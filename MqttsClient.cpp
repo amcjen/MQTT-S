@@ -25,9 +25,9 @@
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * 
  * 
- *  Created on: 2013/06/08
+ *  Created on: 2013/06/11
  *      Author: Tomoaki YAMAGUCHI
- *     Version: 0.3.0
+ *     Version: 0.4.0
  *
  */
 
@@ -193,7 +193,7 @@ MqttsClient::MqttsClient(){
     _willTopic = _willMessage = NULL;
     _gwHdl.setKeepAlive(MQTTS_DEFAULT_KEEPALIVE);
     _msgId = 0;
-    _topics.setSize(MQTTS_MAX_TOPICS);
+    _topics.allocate(MQTTS_MAX_TOPICS);
     theMqtts = this;
 }
 
@@ -254,7 +254,7 @@ void MqttsClient::setQos(uint8_t level){
     if (level == 0){
             _clientFlg |= MQTTS_FLAG_QOS_0;
     }else if (level == 1){
-            _clientFlg |=MQTTS_FLAG_QOS_1;
+            _clientFlg |= MQTTS_FLAG_QOS_1;
     }
     _qos = level;
 }
@@ -307,11 +307,15 @@ uint8_t MqttsClient::getMsgRequestStatus(){
     return _sendQ->getStatus(0);
 }
 
+uint8_t MqttsClient::getMsgRequestCount(){
+  return _sendQ->getCount();
+}
+
 void MqttsClient::setMsgRequestStatus(uint8_t stat){
     _sendQ->setStatus(0,stat);
 }
 
-void MqttsClient::createTopic(MQString* topic, uint8_t type, Callback* callback){
+void MqttsClient::createTopic(MQString* topic, uint8_t type, TopicCallback callback){
     _topics.addTopic(topic, type);
     _topics.setCallback(topic, callback);
 }
@@ -324,6 +328,10 @@ void MqttsClient::delayTime(long maxTime){
     srand((unsigned)time( NULL ));
     usleep((rand() % maxTime) * 1000);
 #endif
+}
+
+void MqttsClient::copyMsg(MqttsMessage* msg, ZBRxResponse* recvMsg){
+    memcpy(msg->getMsgBuff()->getBuff(), recvMsg->getData(), recvMsg->getData()[0]);
 }
 
 /*========================================================
@@ -504,49 +512,46 @@ int MqttsClient::publish(MQString* topic, const char* data, int dataLength){
 int MqttsClient::registerTopic(MQString* topic){
     MqttsRegister mqttsMsg = MqttsRegister();
     mqttsMsg.setTopicName(topic);
-    if (!_qos){
+    if (_qos){
             mqttsMsg.setMsgId(getNextMsgId());
         }
     return requestSendMsg((MqttsMessage*)&mqttsMsg);
 }
 
 /*--------- SUBSCRIBE ------*/
-int MqttsClient::subscribe(MQString* topic, Callback* callback){
-  // ToDo   Debug
+int MqttsClient::subscribe(MQString* topic, uint8_t type, TopicCallback callback){
     MqttsSubscribe mqttsMsg = MqttsSubscribe();
     uint16_t topicId = _topics.getTopicId(topic);
     if (topicId){
         mqttsMsg.setTopicId(topicId);
+        mqttsMsg.setFlags(_clientFlg | _topics.getTopicType(topic));
     }else{
         mqttsMsg.setTopicName(topic);
+        mqttsMsg.setFlags(_clientFlg | MQTTS_TOPIC_TYPE_NORMAL);
+        _topics.addTopic(topic, type);
+        _topics.setCallback(topic, callback);
     }
-    mqttsMsg.setFlags(_clientFlg);
-    if (!_qos){
-            mqttsMsg.setMsgId(getNextMsgId());
-        }
+    mqttsMsg.setMsgId(getNextMsgId());
     return requestSendMsg((MqttsMessage*)&mqttsMsg);
 }
 
 /*--------- UNSUBSCRIBE ------*/
 int MqttsClient::unsubscribe(MQString* topic){
-  // ToDo   Debug
     MqttsUnsubscribe mqttsMsg = MqttsUnsubscribe();
     uint16_t topicId = _topics.getTopicId(topic);
     if (topicId){
         mqttsMsg.setTopicId(topicId);
+        mqttsMsg.setFlags(_clientFlg | _topics.getTopicType(topic));
     }else{
         mqttsMsg.setTopicName(topic);
+        mqttsMsg.setFlags(_clientFlg | MQTTS_TOPIC_TYPE_NORMAL);
     }
-    mqttsMsg.setFlags(_clientFlg);
-    if (!_qos){
-            mqttsMsg.setMsgId(getNextMsgId());
-        }
+    mqttsMsg.setMsgId(getNextMsgId());
     return requestSendMsg((MqttsMessage*)&mqttsMsg);
 }
 
 /*--------- DISCONNECT ------*/
 int MqttsClient::disconnect(uint16_t duration){
-  // ToDo   Debug
     MqttsDisconnect mqttsMsg = MqttsDisconnect();
     if (duration){
         mqttsMsg.setDuration(duration);
@@ -575,16 +580,14 @@ int  MqttsClient::pingResp(){
 
 /*--------- WILLTOPIC ------*/
 int MqttsClient::willTopic(){
-  // ToDo   Debug
     MqttsWillTopic mqttsMsg = MqttsWillTopic();
-    mqttsMsg.setFlags(_clientFlg);
     mqttsMsg.setWillTopic(_willTopic);
+    mqttsMsg.setFlags(_clientFlg & 0x70);
     return requestSendMsg((MqttsMessage*)&mqttsMsg);
 }
 
 /*--------- WILLMSG ------*/
 int MqttsClient::willMsg(){
-  // ToDo   Debug
     MqttsWillMsg mqttsMsg = MqttsWillMsg();
     mqttsMsg.setWillMsg(_willMessage);
     return requestSendMsg((MqttsMessage*)&mqttsMsg);
@@ -611,16 +614,15 @@ void MqttsClient::recieveMessageHandler(ZBRxResponse* recvMsg, int* returnCode){
                 #endif
             #endif /* DEBUG_MQTTS */
         MqttsPublish mqMsg = MqttsPublish();
-        mqMsg.setFrame(recvMsg->getData(), recvMsg->getData()[0]);
-
+        mqMsg.setFrame(recvMsg);
         if ( _gwHdl.getAddress16() == getRxRemoteAddress16()){
-            _pubHdl.exec(&mqMsg,&_topics);
+            return _pubHdl.exec(&mqMsg,&_topics);
         }
 
 /*---------  PUBACK  ----------*/
     }else if (recvMsg->getData()[1] == MQTTS_TYPE_PUBACK && getMsgRequestStatus() == MQTTS_MSG_WAIT_ACK){
         MqttsPubAck mqMsg = MqttsPubAck();
-        memcpy(mqMsg.getMsgBuff()->getBuff(), recvMsg->getData(), recvMsg->getData()[0]);
+        copyMsg(&mqMsg, recvMsg);
             #ifdef DEBUG_MQTTS
                 #ifdef ARDUINO
                   debug.print("\nPUBACK ReturnCode=");
@@ -697,7 +699,7 @@ void MqttsClient::recieveMessageHandler(ZBRxResponse* recvMsg, int* returnCode){
         *returnCode = MQTTS_ERR_NO_ERROR;
 
         MqttsAdvertise mqMsg = MqttsAdvertise();
-        memcpy(mqMsg.getMsgBuff()->getBuff(), recvMsg->getData(), recvMsg->getData()[0]);
+        copyMsg(&mqMsg, recvMsg);
         _gwHdl.recvAdvertise(&mqMsg);
 
         // ToDo  Update list of gateways.  elements are ZBNode
@@ -716,7 +718,7 @@ void MqttsClient::recieveMessageHandler(ZBRxResponse* recvMsg, int* returnCode){
                #endif
            #endif /* DEBUG_MQTTS */
         MqttsGwInfo mqMsg = MqttsGwInfo();
-        memcpy(mqMsg.getMsgBuff()->getBuff(), recvMsg->getData(), recvMsg->getData()[0]);
+        copyMsg(&mqMsg, recvMsg);
         _gwHdl.recvGwInfo(&mqMsg);
         if (getMsgRequestType() == MQTTS_TYPE_SEARCHGW){
             setMsgRequestStatus(MQTTS_MSG_COMPLETE);
@@ -737,7 +739,7 @@ void MqttsClient::recieveMessageHandler(ZBRxResponse* recvMsg, int* returnCode){
             #endif /* DEBUG_MQTTS */
         if (_qos == 1 && getMsgRequestStatus() == MQTTS_MSG_WAIT_ACK){
             MqttsConnack mqMsg = MqttsConnack();
-            memcpy(mqMsg.getMsgBuff()->getBuff(), recvMsg->getData(), recvMsg->getData()[0]);
+            copyMsg(&mqMsg, recvMsg);
 
             if (mqMsg.getReturnCode() == MQTTS_RC_ACCEPTED){
                 setMsgRequestStatus(MQTTS_MSG_COMPLETE);
@@ -752,7 +754,6 @@ void MqttsClient::recieveMessageHandler(ZBRxResponse* recvMsg, int* returnCode){
 
 /*---------  REGISTER  ----------*/
     }else if (recvMsg->getData()[1] == MQTTS_TYPE_REGISTER){
-        // ToDo   Debug
           #ifdef DEBUG_MQTTS
               #ifdef ARDUINO
                   debug.println(" REGISTER received");
@@ -765,7 +766,9 @@ void MqttsClient::recieveMessageHandler(ZBRxResponse* recvMsg, int* returnCode){
               #endif
           #endif /* DEBUG_MQTTS */
         MqttsRegister mqMsg = MqttsRegister();
-        memcpy(mqMsg.getMsgBuff()->getBuff(), recvMsg->getData(), mqMsg.getFrameLength());
+
+        mqMsg.setFrame(recvMsg);
+
         if (_topics.match(mqMsg.getTopicName())){
             _topics.addTopic(mqMsg.getTopicName());
             _topics.setTopicId(mqMsg.getTopicName(),mqMsg.getTopicId());
@@ -789,7 +792,7 @@ void MqttsClient::recieveMessageHandler(ZBRxResponse* recvMsg, int* returnCode){
                      #endif
                  #endif /* DEBUG_MQTTS */
             MqttsRegAck mqMsg = MqttsRegAck();
-            memcpy(mqMsg.getMsgBuff()->getBuff(), recvMsg->getData(), mqMsg.getFrameLength());
+            copyMsg(&mqMsg, recvMsg);
             if (mqMsg.getMsgId() == getLong(_sendQ->getMessage(0)->getBody() + 2)){
                 if (getLong((uint8_t*)_sendQ->getMessage(0)->getBody()+4)){
                     if (mqMsg.getReturnCode() == MQTTS_RC_ACCEPTED){
@@ -810,7 +813,7 @@ void MqttsClient::recieveMessageHandler(ZBRxResponse* recvMsg, int* returnCode){
     }else if (recvMsg->getData()[1] == MQTTS_TYPE_SUBACK && getMsgRequestStatus() == MQTTS_MSG_WAIT_ACK){
         // ToDo   Debug
         MqttsSubAck mqMsg = MqttsSubAck();
-        memcpy(mqMsg.getMsgBuff()->getBuff(), recvMsg->getData(), mqMsg.getFrameLength());
+        copyMsg(&mqMsg, recvMsg);
 
             #ifdef DEBUG_MQTTS
                 #ifdef ARDUINO
@@ -829,10 +832,12 @@ void MqttsClient::recieveMessageHandler(ZBRxResponse* recvMsg, int* returnCode){
         if (mqMsg.getMsgId() == getLong(_sendQ->getMessage(0)->getBody() + 1)){
             if (mqMsg.getReturnCode() == MQTTS_RC_ACCEPTED){
                 setMsgRequestStatus(MQTTS_MSG_COMPLETE);
-                if (_sendQ->getMessage(0)->getBodyLength() > 5){ // TopicName not Id
+                if (_sendQ->getMessage(0)->getBodyLength() > 5){ // TopicName is not Id
                     MQString topic;
-                    topic.readBuf(_sendQ->getMessage(0)->getBody() + 4);
+                    topic.readBuf(_sendQ->getMessage(0)->getBody() + 3);
                     _topics.setTopicId(&topic, mqMsg.getTopicId());
+
+printf("TopicId = %d", _topics.getTopicId(&topic));
                 }
             }else if (mqMsg.getReturnCode() == MQTTS_RC_REJECTED_CONGESTION){
                 setMsgRequestStatus(MQTTS_MSG_REQUEST);
@@ -843,7 +848,6 @@ void MqttsClient::recieveMessageHandler(ZBRxResponse* recvMsg, int* returnCode){
 
 /*---------  UNSUBACK  ----------*/
     }else if (recvMsg->getData()[1] == MQTTS_TYPE_UNSUBACK && getMsgRequestStatus() == MQTTS_MSG_WAIT_ACK){
-        // ToDo   Debug
           #ifdef DEBUG_MQTTS
                #ifdef ARDUINO
                    debug.println(" UNSUBACK received");
@@ -855,16 +859,30 @@ void MqttsClient::recieveMessageHandler(ZBRxResponse* recvMsg, int* returnCode){
                      fprintf(stdout," UNSUBACK received\n");
                #endif
            #endif /* DEBUG_MQTTS */
-        MqttsSubAck mqMsg = MqttsSubAck();
-        memcpy(mqMsg.getMsgBuff()->getBuff(), recvMsg->getData(), mqMsg.getFrameLength());
-
+        MqttsUnSubAck mqMsg = MqttsUnSubAck();
+        copyMsg(&mqMsg, recvMsg);
         if (mqMsg.getMsgId() == getLong(_sendQ->getMessage(0)->getBody() + 1)){
               setMsgRequestStatus(MQTTS_MSG_COMPLETE);
         }
 
+/*---------  DISCONNECT  ----------*/
+    }else if (recvMsg->getData()[1] == MQTTS_TYPE_DISCONNECT && getMsgRequestStatus() == MQTTS_MSG_WAIT_ACK){
+         setMsgRequestStatus(MQTTS_MSG_COMPLETE);
+         _gwHdl.setStatus(MQTTS_GW_DISCONNECTED);
+              #ifdef DEBUG_MQTTS
+                   #ifdef ARDUINO
+                       debug.println(" DISCONNECT received");
+                   #endif
+                   #ifdef MBED
+                         debug.fprintf(stdout," DISCONNECT received\n");
+                   #endif
+                   #ifdef LINUX
+                         fprintf(stdout," UNSUBACK received\n");
+                   #endif
+               #endif /* DEBUG_MQTTS */
+
 /*---------  WILLMSGRESP  ----------*/
     }else if (recvMsg->getData()[1] == MQTTS_TYPE_WILLMSGRESP && getMsgRequestStatus() == MQTTS_MSG_WAIT_ACK){
-        // ToDo   Debug
             #ifdef DEBUG_MQTTS
                  #ifdef ARDUINO
                      debug.println(" WILLMSGRESP received");
@@ -879,7 +897,6 @@ void MqttsClient::recieveMessageHandler(ZBRxResponse* recvMsg, int* returnCode){
 
 /*---------  WILLTOPICREQ  ----------*/
     }else if (recvMsg->getData()[1] == MQTTS_TYPE_WILLTOPICREQ){
-        // ToDo   Debug
             #ifdef DEBUG_MQTTS
                 #ifdef ARDUINO
                     debug.println(" WILLTOPICREQ received");
@@ -905,7 +922,6 @@ void MqttsClient::recieveMessageHandler(ZBRxResponse* recvMsg, int* returnCode){
 
 /*---------  WILLMSGREQ  -----------*/
     }else if (recvMsg->getData()[1] == MQTTS_TYPE_WILLMSGREQ){
-        // ToDo   Debug
             #ifdef DEBUG_MQTTS
                 #ifdef ARDUINO
                     debug.println(" WILLMSGREQ received");
