@@ -27,9 +27,9 @@
  * If not, see <http://www.gnu.org/licenses/>.
  *
  *
- *  Created on: 2013/06/11
+ *  Created on: 2013/06/08
  *      Author: Tomoaki YAMAGUCHI
- *     Version: 0.4.0
+ *     Version: 0.3.0
  *
  */
 
@@ -791,9 +791,9 @@ void MqttsPublish::setFrame(uint8_t* data, uint8_t len){
     setLength(len);
     allocateBody();
     memcpy(getBody(), data, len);
-    _topicId = getLong(data + 3);
-    _msgId = getLong(data + 5);
-    _flags = *(data + 2);
+    _topicId = getLong(data + 1);
+    _msgId = getLong(data + 3);
+    _flags = *data;
 }
 
 
@@ -1416,21 +1416,11 @@ PublishHandller::PublishHandller(){
 PublishHandller::~PublishHandller(){
 
 }
-void PublishHandller::exec(MqttsPublish* msg, Topics* topics){
-#ifdef DEBUG_MQTTS
-#ifdef ARDUINO
-  debug.println("exec PUBLISH callback");
-#endif
-#ifdef MBED
-    debug.fprintf(stdout,"exec PUBLISH callback\n");
-#endif
-#ifdef LINUX
-    fprintf(stdout,"exec PUBLISH callback\n");
-#endif
-#endif /* DEBUG_MQTTS */
+int PublishHandller::exec(MqttsPublish* msg, Topics* topics){
     if (topics->getTopic(msg->getTopicId())){
-        topics->getTopic(msg->getTopicId())->execCallback(msg);
+        return topics->getTopic(msg->getTopicId())->execCallback(msg);
     }
+    return 0;
 }
 
 
