@@ -25,9 +25,9 @@
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * 
  * 
- *  Created on: 2013/06/11
+ *  Created on: 2013/06/08
  *      Author: Tomoaki YAMAGUCHI
- *     Version: 0.4.0
+ *     Version: 0.3.1
  *
  */
 
@@ -121,6 +121,7 @@ public:
     uint16_t getRxRemoteAddress16();
     MQString* getClientId();
     uint16_t getNextMsgId();
+    bool isGwConnected();
 
     //void setClientId(MQString* clientId);
     int  connect();
@@ -129,8 +130,6 @@ public:
     int  subscribe(MQString* topic, uint8_t type, TopicCallback callback);
     int  unsubscribe(MQString* topic);
     int  disconnect(uint16_t duration = 0);
-    int  willTopic();
-    int  willMsg();
     bool init(const char* clientIdName);
     int  execMsgRequest();
     void recieveMessageHandler(ZBRxResponse* msg, int* returnCode);
@@ -141,6 +140,9 @@ private:
     int  searchGw(uint8_t radius);
     int  pingReq(MQString* clietnId);
     int  pingResp();
+    int  willTopic();
+    int  willMsg();
+    int  pubAck(uint16_t topicId, uint16_t msgId, uint8_t rc);
     int  requestSendMsg(MqttsMessage* msg);
     int  requestPrioritySendMsg(MqttsMessage* mqttsMsgPtr);
     int  broadcast(uint16_t packetReadTimeout);
