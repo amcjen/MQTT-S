@@ -50,9 +50,9 @@ int main(int argc, char **argv){
 
     while(true){
         int rc = mqtts.execMsgRequest();
-        if (rc == MQTTS_ERR_NO_ERROR && mqtts.getMsgRequestCount() == 0){
+        if (mqtts.isGwConnected()){
             break;
-        }else{
+        }else if ( rc != MQTTS_ERR_NO_ERROR){
             fprintf(stdout,"Rc = %d, Request status = 0x%x\n", rc, mqtts.getMsgRequestStatus());
             if ( mqtts.getMsgRequestType() == MQTTS_TYPE_SEARCHGW){
                 mqtts.setMsgRequestStatus(MQTTS_MSG_REQUEST);
@@ -70,7 +70,7 @@ int main(int argc, char **argv){
             int rc = mqtts.execMsgRequest();
         if (rc == MQTTS_ERR_NO_ERROR && mqtts.getMsgRequestCount() == 0){
             break;
-        }else{
+        }else if ( mqtts.getMsgRequestStatus() != MQTTS_MSG_REQUEST){
             fprintf(stdout,"Rc = %d, Request status = 0x%x\n", rc, mqtts.getMsgRequestStatus());
                 mqtts.clearMsgRequest();
         }
@@ -82,7 +82,7 @@ int main(int argc, char **argv){
         int rc = mqtts.execMsgRequest();
         if (rc == MQTTS_ERR_NO_ERROR && mqtts.getMsgRequestCount() == 0){
             break;
-        }else{
+        }else if( mqtts.getMsgRequestStatus() != MQTTS_MSG_REQUEST){
             fprintf(stdout,"Rc = %d, Request status = 0x%x\n", rc, mqtts.getMsgRequestStatus());
                 mqtts.clearMsgRequest();
         }
@@ -96,7 +96,7 @@ int main(int argc, char **argv){
             int rc = mqtts.execMsgRequest();
             if (rc == MQTTS_ERR_NO_ERROR && mqtts.getMsgRequestCount() == 0){
                 break;
-            }else{
+            }else if( mqtts.getMsgRequestStatus() != MQTTS_MSG_REQUEST){
                 fprintf(stdout,"Rc = %d, Request status = 0x%x\n", rc, mqtts.getMsgRequestStatus());
                     mqtts.clearMsgRequest();
             }
@@ -111,7 +111,7 @@ int main(int argc, char **argv){
             int rc = mqtts.execMsgRequest();
             if (rc == MQTTS_ERR_NO_ERROR && mqtts.getMsgRequestCount() == 0){
                 break;
-            }else{
+            }else if( mqtts.getMsgRequestStatus() != MQTTS_MSG_REQUEST){
                 fprintf(stdout,"Rc = %d, Request status = 0x%x\n", rc, mqtts.getMsgRequestStatus());
                     mqtts.clearMsgRequest();
             }
@@ -125,7 +125,7 @@ int main(int argc, char **argv){
                 int rc = mqtts.execMsgRequest();
                 if (rc == MQTTS_ERR_NO_ERROR && mqtts.getMsgRequestCount() == 0){
                     break;
-                }else{
+                }else if( mqtts.getMsgRequestStatus() != MQTTS_MSG_REQUEST){
                     fprintf(stdout,"Rc = %d, Request status = 0x%x\n", rc, mqtts.getMsgRequestStatus());
                         mqtts.clearMsgRequest();
                 }
@@ -135,7 +135,7 @@ int main(int argc, char **argv){
                         int rc = mqtts.execMsgRequest();
                         if (rc == MQTTS_ERR_NO_ERROR && mqtts.getMsgRequestCount() == 0){
                             continue;
-                        }else{
+                        }else if( mqtts.getMsgRequestStatus() != MQTTS_MSG_REQUEST){
                             fprintf(stdout,"Rc = %d, Request status = 0x%x\n", rc, mqtts.getMsgRequestStatus());
                                 mqtts.clearMsgRequest();
                         }
