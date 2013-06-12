@@ -89,9 +89,13 @@ MQTT-S Client via XBee  (running on linux and Arduino)
   
   Serial interfacing
   
-  [BD] 0-7           
+    [BD] 0-7 
+
+    [D7] 1
   
-  [D6] 0 or 1
+    [D6] 0 or 1
+  
+    [AP] 2
 
   Other values are defaults. Baudrate is used by  mqtts.begin(device, baudrate) function.
   
