@@ -27,16 +27,16 @@
 
 #define MQ_WDT_ERR   (B01100000)  // Error Indication time
 //#define MQ_WDT_TIME  (B01000110)  // 1 Sec
-//#define MQ_WDT_TIME_SEC   6       // 1 Sec
+//#define MQ_WDT_TIME_SEC   1       // 1 Sec
 
 //#define MQ_WDT_TIME (B01000111)   // 2 Sec
-//#define MQ_WDT_TIME_SEC   7       // 2 Sec
+//#define MQ_WDT_TIME_SEC   2       // 2 Sec
 
 #define MQ_WDT_TIME (B01100000)     // 4 Sec
-#define MQ_WDT_TIME_SEC   8         // 4 Sec  
+#define MQ_WDT_TIME_SEC   4         // 4 Sec  
  
 //#define MQ_WDT_TIME (B01100001)   // 8 Sec
-//#define MQ_WDT_TIME_SEC   9       // 8 Sec
+//#define MQ_WDT_TIME_SEC   8       // 8 Sec
 
 #define MQ_WAKEUP_COUNT   5
 
